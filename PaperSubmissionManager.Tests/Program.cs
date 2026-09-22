@@ -138,7 +138,39 @@ using (var connection = db.OpenConnection())
     using var integrity = connection.CreateCommand(); integrity.CommandText = "PRAGMA integrity_check"; Assert(Convert.ToString(integrity.ExecuteScalar()) == "ok", "数据库完整性校验失败。");
 }
 
-Console.WriteLine($"PASS journals={import.ReadCount}; classifications=417; backups={backup.List().Count}; noteVersions={versions.Count}");
+var externalSource = Path.Combine(testRoot, "外部原稿.txt");
+File.WriteAllText(externalSource, "external manuscript");
+var externalPaper = papers.CreatePaper("路径附件测试", "", [new PendingAttachment("外部稿件", externalSource, true)]);
+var externalAttachment = papers.ListAttachments(externalPaper).Single();
+Assert(externalAttachment.IsExternal && papers.ResolveAttachmentPath(externalAttachment) == externalSource, "路径附件应指向源文件。");
+Assert(!Directory.EnumerateFiles(paths.AttachmentRoot, "外部原稿.txt", SearchOption.AllDirectories).Any(), "路径附件不得复制源文件。");
+var renamedExternal = papers.RenameAttachmentFile(externalAttachment.Id, "外部稿件重命名.txt");
+var renamedExternalPath = papers.ResolveAttachmentPath(renamedExternal);
+Assert(!File.Exists(externalSource) && File.ReadAllText(renamedExternalPath) == "external manuscript", "重命名应作用于外部源文件并更新路径。");
+var externalPackage = Path.Combine(testRoot, "路径附件.psmdata");
+transfer.Export(externalPackage);
+using (var archive = System.IO.Compression.ZipFile.OpenRead(externalPackage))
+    Assert(!archive.Entries.Any(x => x.FullName.StartsWith($"attachments/{externalPaper}/")), "导出路径附件不得打包源文件。");
+papers.DeleteAttachment(renamedExternal.Id);
+Assert(File.Exists(renamedExternalPath), "删除路径记录不得删除源文件。");
+transfer.Import(externalPackage);
+Assert(papers.ListAttachments(externalPaper).Single().IsExternal, "导入后应保留路径附件类型。");
+File.Delete(renamedExternalPath);
+var missingRejected = false;
+try { papers.ResolveAttachmentPath(papers.ListAttachments(externalPaper).Single()); }
+catch (FileNotFoundException ex) { missingRejected = ex.Message == "文件不存在"; }
+Assert(missingRejected, "丢失路径应提示文件不存在。");
+transfer.Export(externalPackage); // 路径失效也能备份记录
+transfer.Import(externalPackage);
+File.WriteAllText(renamedExternalPath, "restored source");
+papers.DeletePaper(externalPaper);
+Assert(File.Exists(renamedExternalPath), "删除论文不得删除外部源文件。");
+var blankRejected = false;
+try { papers.ResolveAttachmentPath(new AttachmentRecord { IsExternal = true, StoredPath = "" }); }
+catch (FileNotFoundException ex) { blankRejected = ex.Message == "文件不存在"; }
+Assert(blankRejected, "空路径应提示文件不存在。");
+
+Console.WriteLine($"PASS journals={import.ReadCount}; classifications=417; backups={backup.List().Count}; noteVersions={versions.Count}; externalAttachments=PASS");
 
 static long Scalar(SqliteConnection connection, string sql) { using var command = connection.CreateCommand(); command.CommandText = sql; return Convert.ToInt64(command.ExecuteScalar()); }
 static void Assert(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }

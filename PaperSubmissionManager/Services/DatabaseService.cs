@@ -155,6 +155,7 @@ public sealed class DatabaseService
             """;
         command.ExecuteNonQuery();
         EnsureColumn(connection, "PaperSubmissions", "CurrentStatus", "TEXT NOT NULL DEFAULT '未投稿'");
+        EnsureColumn(connection, "PaperAttachments", "IsExternal", "INTEGER NOT NULL DEFAULT 0");
         RepairPaperWorkspaceLinks(connection);
     }
 

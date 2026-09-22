@@ -250,18 +250,22 @@ public partial class MainWindow : Window
         foreach (var file in files)
         {
             var name = TextPromptWindow.Show(this, "附件管理名称", $"请输入“{Path.GetFileName(file)}”的管理名称：", Path.GetFileNameWithoutExtension(file));
-            if (!string.IsNullOrWhiteSpace(name)) pending.Add(new PendingAttachment(name, file));
+            if (!string.IsNullOrWhiteSpace(name)) pending.Add(new PendingAttachment(name, file, LinkAttachmentBox.IsChecked == true));
         }
         if (pending.Count == 0) return;
-        Run("附件已导入到软件数据目录", () => { _papers.AddAttachments(paper.Id, pending); LoadSelectedPaper(); RefreshPapers(); });
+        Run("附件记录已添加", () => { _papers.AddAttachments(paper.Id, pending); LoadSelectedPaper(); RefreshPapers(); });
     }
     private void OpenPaperAttachment_Click(object sender, RoutedEventArgs e) => OpenSelectedAttachment();
     private void AttachmentGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e) => OpenSelectedAttachment();
     private void OpenSelectedAttachment()
     {
         if (AttachmentGrid.SelectedItem is not AttachmentRecord item) return;
-        if (_papers.IsRiskyExtension(item.ActualFileName) && !Confirm(this, "这是可能执行代码的高风险附件。仅在确认来源可信时打开。是否继续？")) return;
-        Run("已交给系统默认程序打开", () => Process.Start(new ProcessStartInfo(_papers.ResolveAttachmentPath(item)) { UseShellExecute = true }));
+        Run("附件打开操作完成", () =>
+        {
+            var path = _papers.ResolveAttachmentPath(item);
+            if (_papers.IsRiskyExtension(item.ActualFileName) && !Confirm(this, "这是可能执行代码的高风险附件。仅在确认来源可信时打开。是否继续？")) return;
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        });
     }
     private void ShowPaperAttachmentInFolder_Click(object sender, RoutedEventArgs e)
     {
@@ -277,7 +281,7 @@ public partial class MainWindow : Window
     }
     private void DeletePaperAttachment_Click(object sender, RoutedEventArgs e)
     {
-        if (AttachmentGrid.SelectedItem is not AttachmentRecord item || !Confirm(this, $"确定删除附件“{item.DisplayName}”吗？")) return;
+        if (AttachmentGrid.SelectedItem is not AttachmentRecord item || !Confirm(this, $"确定删除附件“{item.DisplayName}”吗？{(item.IsExternal ? "（仅删除记录，保留源文件）" : "")}")) return;
         Run("附件已删除", () => { _papers.DeleteAttachment(item.Id); LoadSelectedPaper(); RefreshPapers(); });
     }
 

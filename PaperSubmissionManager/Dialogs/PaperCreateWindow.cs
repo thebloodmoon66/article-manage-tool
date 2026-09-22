@@ -11,6 +11,7 @@ public sealed class PaperCreateWindow : Window
     private readonly TextBox _notes = new() { AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, Height = 75 };
     private readonly ListBox _attachments = new() { DisplayMemberPath = nameof(PendingAttachment.DisplayName), Height = 180 };
     private readonly List<PendingAttachment> _items = [];
+    private readonly CheckBox _linkOnly = new() { Content = "仅记录文件路径（不复制文件）", Margin = new Thickness(4, 8, 4, 8) };
 
     public PaperCreateWindow()
     {
@@ -21,7 +22,7 @@ public sealed class PaperCreateWindow : Window
         var bar = new DockPanel(); bar.Children.Add(new TextBlock { Text = "附件（论文文件和自定义文件均可）", FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
         var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         var add = new Button { Content = "选择文件" }; add.Click += Add_Click; var remove = new Button { Content = "移除选中" }; remove.Click += (_, _) => { if (_attachments.SelectedItem is PendingAttachment item) { _items.Remove(item); Refresh(); } };
-        actions.Children.Add(add); actions.Children.Add(remove); DockPanel.SetDock(actions, Dock.Right); bar.Children.Add(actions); root.Children.Add(bar); root.Children.Add(_attachments);
+        actions.Children.Add(add); actions.Children.Add(remove); DockPanel.SetDock(actions, Dock.Right); bar.Children.Add(actions); root.Children.Add(bar); root.Children.Add(_linkOnly); root.Children.Add(_attachments);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         buttons.Children.Add(new Button { Content = "取消", IsCancel = true }); var create = new Button { Content = "创建", IsDefault = true }; create.Click += (_, _) => { if (string.IsNullOrWhiteSpace(_name.Text)) { MessageBox.Show(this, "请输入论文名称。", "提示"); return; } DialogResult = true; Close(); }; buttons.Children.Add(create); root.Children.Add(buttons); Content = root;
     }
@@ -33,7 +34,7 @@ public sealed class PaperCreateWindow : Window
         foreach (var file in picker.FileNames)
         {
             var display = TextPromptWindow.Show(this, "附件管理名称", $"请输入“{System.IO.Path.GetFileName(file)}”在软件中的管理名称：", System.IO.Path.GetFileNameWithoutExtension(file));
-            if (display is not null && display.Length > 0) _items.Add(new PendingAttachment(display, file));
+            if (display is not null && display.Length > 0) _items.Add(new PendingAttachment(display, file, _linkOnly.IsChecked == true));
         }
         Refresh();
     }

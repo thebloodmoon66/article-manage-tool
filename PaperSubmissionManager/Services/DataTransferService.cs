@@ -8,7 +8,7 @@ namespace PaperSubmissionManager.Services;
 
 public sealed class DataTransferService(DatabaseService database, BackupService backups, PaperService papers)
 {
-    private const int PackageVersion = 1;
+    private const int PackageVersion = 2;
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
 
     public TransferResult Export(string destinationPath)
@@ -25,6 +25,7 @@ public sealed class DataTransferService(DatabaseService database, BackupService 
             foreach (var paper in package.Papers)
             foreach (var attachment in paper.Attachments)
             {
+                if (attachment.IsExternal) continue;
                 var record = papers.GetAttachment(attachment.SourceId)
                     ?? throw new InvalidOperationException($"附件“{attachment.DisplayName}”已不存在，导出已取消。");
                 var sourcePath = papers.ResolveAttachmentPath(record);
@@ -101,13 +102,13 @@ public sealed class DataTransferService(DatabaseService database, BackupService 
         {
             using (var command = connection.CreateCommand())
             {
-                command.CommandText = "SELECT Id,DisplayName,OriginalFileName,CreatedAt FROM PaperAttachments WHERE PaperId=$paper ORDER BY Id;";
+                command.CommandText = "SELECT Id,DisplayName,OriginalFileName,CreatedAt,IsExternal,StoredPath FROM PaperAttachments WHERE PaperId=$paper ORDER BY Id;";
                 command.Parameters.AddWithValue("$paper", paper.SourceId);
                 using var reader = command.ExecuteReader();
                 while (reader.Read())
                 {
                     var id = reader.GetInt64(0);
-                    paper.Attachments.Add(new TransferAttachment { SourceId = id, DisplayName = reader.GetString(1), OriginalFileName = reader.GetString(2), CreatedAt = reader.GetString(3), PackageEntry = $"attachments/{paper.SourceId}/{id}{SafeExtension(reader.GetString(2))}" });
+                    paper.Attachments.Add(new TransferAttachment { SourceId = id, DisplayName = reader.GetString(1), OriginalFileName = reader.GetString(2), CreatedAt = reader.GetString(3), IsExternal = reader.GetInt32(4) != 0, ExternalPath = reader.GetInt32(4) != 0 ? reader.GetString(5) : "", PackageEntry = $"attachments/{paper.SourceId}/{id}{SafeExtension(reader.GetString(2))}" });
                 }
             }
             using (var command = connection.CreateCommand())
@@ -233,28 +234,36 @@ public sealed class DataTransferService(DatabaseService database, BackupService 
 
     private void ImportAttachment(SqliteConnection connection, SqliteTransaction transaction, ZipArchive archive, long paperId, TransferAttachment attachment, List<string> createdFiles, List<string> supersededFiles)
     {
+        string relative;
+        if (attachment.IsExternal)
+        {
+            relative = attachment.ExternalPath ?? "";
+        }
+        else
+        {
         var entry = archive.GetEntry(attachment.PackageEntry) ?? throw new InvalidDataException($"数据包缺少附件：{attachment.PackageEntry}");
         var paperDirectory = Path.Combine(database.Paths.AttachmentRoot, paperId.ToString(CultureInfo.InvariantCulture));
         Directory.CreateDirectory(paperDirectory);
         var finalPath = PaperService.GetAvailableAttachmentPath(paperDirectory, attachment.OriginalFileName);
         using (var input = entry.Open()) using (var output = new FileStream(finalPath, FileMode.CreateNew, FileAccess.Write, FileShare.None)) input.CopyTo(output);
         createdFiles.Add(finalPath);
-        var relative = Path.GetRelativePath(database.Paths.AttachmentRoot, finalPath).Replace(Path.DirectorySeparatorChar, '/');
+        relative = Path.GetRelativePath(database.Paths.AttachmentRoot, finalPath).Replace(Path.DirectorySeparatorChar, '/');
+        }
 
         long? existingId = null; string? oldStoredPath = null;
-        using (var find = Cmd(connection, transaction, "SELECT Id,StoredPath FROM PaperAttachments WHERE PaperId=$paper AND DisplayName=$name COLLATE NOCASE ORDER BY Id LIMIT 1;"))
+        using (var find = Cmd(connection, transaction, "SELECT Id,StoredPath,IsExternal FROM PaperAttachments WHERE PaperId=$paper AND DisplayName=$name COLLATE NOCASE ORDER BY Id LIMIT 1;"))
         {
             find.Parameters.AddWithValue("$paper", paperId); find.Parameters.AddWithValue("$name", Required(attachment.DisplayName, "附件名称"));
-            using var reader = find.ExecuteReader(); if (reader.Read()) { existingId = reader.GetInt64(0); oldStoredPath = reader.GetString(1); }
+            using var reader = find.ExecuteReader(); if (reader.Read()) { existingId = reader.GetInt64(0); oldStoredPath = reader.GetInt32(2) == 0 ? reader.GetString(1) : null; }
         }
         if (existingId is null)
         {
-            using var insert = Cmd(connection, transaction, "INSERT INTO PaperAttachments(PaperId,DisplayName,OriginalFileName,StoredPath,CreatedAt) VALUES($paper,$display,$original,$stored,$created);");
+            using var insert = Cmd(connection, transaction, "INSERT INTO PaperAttachments(PaperId,DisplayName,OriginalFileName,StoredPath,CreatedAt,IsExternal) VALUES($paper,$display,$original,$stored,$created,$external);");
             AddAttachmentParameters(insert, paperId, attachment, relative); insert.ExecuteNonQuery();
         }
         else
         {
-            using var update = Cmd(connection, transaction, "UPDATE PaperAttachments SET DisplayName=$display,OriginalFileName=$original,StoredPath=$stored,CreatedAt=$created WHERE Id=$id;");
+            using var update = Cmd(connection, transaction, "UPDATE PaperAttachments SET DisplayName=$display,OriginalFileName=$original,StoredPath=$stored,CreatedAt=$created,IsExternal=$external WHERE Id=$id;");
             update.Parameters.AddWithValue("$id", existingId.Value); AddAttachmentParameters(update, paperId, attachment, relative); update.ExecuteNonQuery();
             if (!string.IsNullOrWhiteSpace(oldStoredPath))
             {
@@ -265,7 +274,7 @@ public sealed class DataTransferService(DatabaseService database, BackupService 
 
     private static void AddAttachmentParameters(SqliteCommand command, long paperId, TransferAttachment attachment, string relative)
     {
-        command.Parameters.AddWithValue("$paper", paperId); command.Parameters.AddWithValue("$display", Required(attachment.DisplayName, "附件名称")); command.Parameters.AddWithValue("$original", Path.GetFileName(Required(attachment.OriginalFileName, "附件原文件名"))); command.Parameters.AddWithValue("$stored", relative); command.Parameters.AddWithValue("$created", ValidTime(attachment.CreatedAt));
+        command.Parameters.AddWithValue("$paper", paperId); command.Parameters.AddWithValue("$display", Required(attachment.DisplayName, "附件名称")); command.Parameters.AddWithValue("$original", Path.GetFileName(Required(attachment.OriginalFileName, "附件原文件名"))); command.Parameters.AddWithValue("$external", attachment.IsExternal ? 1 : 0); command.Parameters.AddWithValue("$stored", relative); command.Parameters.AddWithValue("$created", ValidTime(attachment.CreatedAt));
     }
 
     private static Dictionary<long, long> ImportWorkspaces(SqliteConnection connection, SqliteTransaction transaction, TransferPackage package)
@@ -381,11 +390,17 @@ public sealed class DataTransferService(DatabaseService database, BackupService 
 
     private static void ValidatePackage(TransferPackage package, ZipArchive archive)
     {
-        if (package.Version != PackageVersion) throw new InvalidDataException($"不支持的数据包版本：{package.Version}。");
+        if (package.Version != 1 && package.Version != PackageVersion) throw new InvalidDataException($"不支持的数据包版本：{package.Version}。");
         if (package.Papers.Count > 100000 || package.Authors.Count > 100000 || package.Workspaces.Count > 100000) throw new InvalidDataException("数据包记录数量异常。");
         long total = 0;
         foreach (var attachment in package.Papers.SelectMany(x => x.Attachments))
         {
+            if (attachment.IsExternal)
+            {
+                if (!string.IsNullOrEmpty(attachment.ExternalPath) && !Path.IsPathFullyQualified(attachment.ExternalPath))
+                    throw new InvalidDataException("外部附件必须记录完整文件路径。");
+                continue;
+            }
             if (!attachment.PackageEntry.StartsWith("attachments/", StringComparison.Ordinal) || attachment.PackageEntry.Contains("..", StringComparison.Ordinal)) throw new InvalidDataException("附件条目路径无效。");
             var entry = archive.GetEntry(attachment.PackageEntry) ?? throw new InvalidDataException($"数据包缺少附件：{attachment.PackageEntry}");
             checked { total += entry.Length; }
@@ -395,7 +410,7 @@ public sealed class DataTransferService(DatabaseService database, BackupService 
 
     private sealed class TransferPackage { public int Version { get; set; } public string ExportedAt { get; set; } = ""; public List<TransferPaper> Papers { get; set; } = []; public List<TransferAuthor> Authors { get; set; } = []; public List<TransferWorkspace> Workspaces { get; set; } = []; }
     private sealed class TransferPaper { public long SourceId { get; set; } public string Name { get; set; } = ""; public string Notes { get; set; } = ""; public string CreatedAt { get; set; } = ""; public List<TransferAttachment> Attachments { get; set; } = []; public List<TransferSubmission> Submissions { get; set; } = []; }
-    private sealed class TransferAttachment { public long SourceId { get; set; } public string DisplayName { get; set; } = ""; public string OriginalFileName { get; set; } = ""; public string CreatedAt { get; set; } = ""; public string PackageEntry { get; set; } = ""; }
+    private sealed class TransferAttachment { public bool IsExternal { get; set; } public string ExternalPath { get; set; } = ""; public long SourceId { get; set; } public string DisplayName { get; set; } = ""; public string OriginalFileName { get; set; } = ""; public string CreatedAt { get; set; } = ""; public string PackageEntry { get; set; } = ""; }
     private sealed class TransferSubmission { public long SourceId { get; set; } public string JournalName { get; set; } = ""; public string WorkspaceName { get; set; } = ""; public string CurrentStatus { get; set; } = "未投稿"; public string RecordedAt { get; set; } = ""; public List<TransferNote> Notes { get; set; } = []; }
     private sealed class TransferNote { public string VersionGroupId { get; set; } = ""; public int VersionNumber { get; set; } public string Content { get; set; } = ""; public string RecordedAt { get; set; } = ""; public bool IsCurrent { get; set; } }
     private sealed class TransferAuthor { public long SourceId { get; set; } public string Name { get; set; } = ""; public string CreatedAt { get; set; } = ""; public List<string> Emails { get; set; } = []; }

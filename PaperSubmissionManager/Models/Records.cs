@@ -73,6 +73,8 @@ public sealed class AttachmentRecord
     public string DisplayName { get; set; } = "";
     public string OriginalFileName { get; set; } = "";
     public string StoredPath { get; set; } = "";
+    public bool IsExternal { get; set; }
+    public string StorageMode => IsExternal ? "仅记录路径" : "已导入文件";
     public string CreatedAt { get; set; } = "";
     public string ActualFileName => Path.GetFileName(StoredPath.Replace('/', Path.DirectorySeparatorChar));
 }
@@ -156,4 +158,4 @@ public sealed class ImportResult
     public IReadOnlyList<string> Warnings { get; init; } = [];
 }
 
-public sealed record PendingAttachment(string DisplayName, string SourcePath);
+public sealed record PendingAttachment(string DisplayName, string SourcePath, bool IsExternal = false);

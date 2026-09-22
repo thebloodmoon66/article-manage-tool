@@ -155,7 +155,7 @@ public sealed class PaperService(DatabaseService database)
         List<string> storedPaths;
         using (var command = connection.CreateCommand())
         {
-            command.CommandText = "SELECT StoredPath FROM PaperAttachments WHERE PaperId = $id;";
+            command.CommandText = "SELECT StoredPath FROM PaperAttachments WHERE PaperId = $id AND IsExternal=0;";
             command.Parameters.AddWithValue("$id", paperId);
             using var reader = command.ExecuteReader();
             storedPaths = [];
@@ -225,7 +225,7 @@ public sealed class PaperService(DatabaseService database)
         using var connection = database.OpenConnection();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Id, PaperId, DisplayName, OriginalFileName, StoredPath, CreatedAt
+            SELECT Id, PaperId, DisplayName, OriginalFileName, StoredPath, CreatedAt, IsExternal
             FROM PaperAttachments
             WHERE PaperId = $paper
             ORDER BY CreatedAt, Id;
@@ -243,7 +243,7 @@ public sealed class PaperService(DatabaseService database)
         using var connection = database.OpenConnection();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Id, PaperId, DisplayName, OriginalFileName, StoredPath, CreatedAt
+            SELECT Id, PaperId, DisplayName, OriginalFileName, StoredPath, CreatedAt, IsExternal
             FROM PaperAttachments WHERE Id = $id;
             """;
         command.Parameters.AddWithValue("$id", attachmentId);
@@ -279,7 +279,7 @@ public sealed class PaperService(DatabaseService database)
         try
         {
             File.Move(sourceForMove, finalPath);
-            var relative = Path.GetRelativePath(database.Paths.AttachmentRoot, finalPath)
+            var relative = attachment.IsExternal ? finalPath : Path.GetRelativePath(database.Paths.AttachmentRoot, finalPath)
                 .Replace(Path.DirectorySeparatorChar, '/');
             using var connection = database.OpenConnection();
             using var command = connection.CreateCommand();
@@ -306,7 +306,7 @@ public sealed class PaperService(DatabaseService database)
     {
         using var connection = database.OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT Id,PaperId,DisplayName,OriginalFileName,StoredPath,CreatedAt FROM PaperAttachments ORDER BY Id;";
+        command.CommandText = "SELECT Id,PaperId,DisplayName,OriginalFileName,StoredPath,CreatedAt,IsExternal FROM PaperAttachments WHERE IsExternal=0 ORDER BY Id;";
         using var reader = command.ExecuteReader();
         var legacy = new List<AttachmentRecord>();
         while (reader.Read())
@@ -327,6 +327,7 @@ public sealed class PaperService(DatabaseService database)
     public void DeleteAttachment(long attachmentId)
     {
         RequireId(attachmentId, "附件");
+        var attachment = GetAttachment(attachmentId) ?? throw new InvalidOperationException("附件记录不存在或已被删除。");
         using var connection = database.OpenConnection();
         string storedPath;
         using (var command = connection.CreateCommand())
@@ -337,7 +338,7 @@ public sealed class PaperService(DatabaseService database)
                 ?? throw new InvalidOperationException("附件记录不存在或已被删除。");
         }
 
-        var quarantine = QuarantineFiles([storedPath]);
+        var quarantine = QuarantineFiles(attachment.IsExternal ? [] : [storedPath]);
         try
         {
             using var transaction = connection.BeginTransaction();
@@ -708,12 +709,18 @@ public sealed class PaperService(DatabaseService database)
     {
         var attachment = GetAttachment(attachmentId)
             ?? throw new InvalidOperationException("附件记录不存在或已被删除。");
-        return ResolveAttachmentPath(attachment.StoredPath);
+        return ResolveAttachmentPath(attachment);
     }
 
     public string ResolveAttachmentPath(AttachmentRecord attachment)
     {
         ArgumentNullException.ThrowIfNull(attachment);
+        if (attachment.IsExternal)
+        {
+            if (string.IsNullOrWhiteSpace(attachment.StoredPath) || !Path.IsPathFullyQualified(attachment.StoredPath) || !File.Exists(attachment.StoredPath))
+                throw new FileNotFoundException("文件不存在");
+            return Path.GetFullPath(attachment.StoredPath);
+        }
         return ResolveAttachmentPath(attachment.StoredPath);
     }
 
@@ -780,7 +787,8 @@ public sealed class PaperService(DatabaseService database)
         DisplayName = reader.GetString(2),
         OriginalFileName = reader.GetString(3),
         StoredPath = reader.GetString(4),
-        CreatedAt = reader.GetString(5)
+        CreatedAt = reader.GetString(5),
+        IsExternal = reader.GetInt32(6) != 0
     };
 
     private static PaperSubmissionRecord ReadSubmission(SqliteDataReader reader) => new()
@@ -817,15 +825,15 @@ public sealed class PaperService(DatabaseService database)
             if (item is null) throw new ArgumentException("附件列表中不能包含空记录。", nameof(pendingAttachments));
             var displayName = RequireText(item.DisplayName, "附件名称");
             if (string.IsNullOrWhiteSpace(item.SourcePath))
-                throw new ArgumentException("附件来源路径不能为空。", nameof(pendingAttachments));
+                throw new FileNotFoundException("文件不存在");
 
             var sourcePath = Path.GetFullPath(item.SourcePath);
-            if (!File.Exists(sourcePath)) throw new FileNotFoundException("找不到要导入的附件。", sourcePath);
+            if (!File.Exists(sourcePath)) throw new FileNotFoundException("文件不存在");
             var originalFileName = Path.GetFileName(sourcePath);
             var extension = Path.GetExtension(originalFileName);
             if (extension.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || extension.Length > 180)
                 throw new InvalidOperationException($"附件“{originalFileName}”的扩展名无法安全保留。");
-            sources.Add(new AttachmentSource(displayName, sourcePath, originalFileName, extension));
+            sources.Add(new AttachmentSource(displayName, sourcePath, originalFileName, extension, item.IsExternal));
         }
 
         var stagingDirectory = Path.Combine(
@@ -838,6 +846,11 @@ public sealed class PaperService(DatabaseService database)
         {
             foreach (var source in sources)
             {
+                if (source.IsExternal)
+                {
+                    stagedItems.Add(new StagedAttachment(source.DisplayName, source.OriginalFileName, source.SourcePath, true));
+                    continue;
+                }
                 var stagedFileName = Guid.NewGuid().ToString("N") + source.Extension;
                 var stagedPath = Path.Combine(stagingDirectory, stagedFileName);
                 File.Copy(source.SourcePath, stagedPath, overwrite: false);
@@ -870,11 +883,14 @@ public sealed class PaperService(DatabaseService database)
 
         foreach (var item in prepared.Items)
         {
-            var finalPath = GetAvailableAttachmentPath(paperDirectory, item.OriginalFileName);
-            File.Move(item.StagedPath, finalPath);
-            finalizedPaths.Add(finalPath);
+            var finalPath = item.IsExternal ? item.StagedPath : GetAvailableAttachmentPath(paperDirectory, item.OriginalFileName);
+            if (!item.IsExternal)
+            {
+                File.Move(item.StagedPath, finalPath);
+                finalizedPaths.Add(finalPath);
+            }
 
-            var relativePath = Path.GetRelativePath(database.Paths.AttachmentRoot, finalPath)
+            var relativePath = item.IsExternal ? finalPath : Path.GetRelativePath(database.Paths.AttachmentRoot, finalPath)
                 .Replace(Path.DirectorySeparatorChar, '/');
             var now = DatabaseService.Now();
             long attachmentId;
@@ -883,14 +899,15 @@ public sealed class PaperService(DatabaseService database)
                 command.Transaction = transaction;
                 command.CommandText = """
                     INSERT INTO PaperAttachments(
-                        PaperId, DisplayName, OriginalFileName, StoredPath, CreatedAt)
-                    VALUES($paper, $display, $original, $stored, $now)
+                        PaperId, DisplayName, OriginalFileName, StoredPath, CreatedAt, IsExternal)
+                    VALUES($paper, $display, $original, $stored, $now, $external)
                     RETURNING Id;
                     """;
                 command.Parameters.AddWithValue("$paper", paperId);
                 command.Parameters.AddWithValue("$display", item.DisplayName);
                 command.Parameters.AddWithValue("$original", item.OriginalFileName);
                 command.Parameters.AddWithValue("$stored", relativePath);
+                command.Parameters.AddWithValue("$external", item.IsExternal ? 1 : 0);
                 command.Parameters.AddWithValue("$now", now);
                 attachmentId = Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
             }
@@ -902,6 +919,7 @@ public sealed class PaperService(DatabaseService database)
                 DisplayName = item.DisplayName,
                 OriginalFileName = item.OriginalFileName,
                 StoredPath = relativePath,
+                IsExternal = item.IsExternal,
                 CreatedAt = now
             });
         }
@@ -1122,12 +1140,12 @@ public sealed class PaperService(DatabaseService database)
         string DisplayName,
         string SourcePath,
         string OriginalFileName,
-        string Extension);
+        string Extension, bool IsExternal);
 
     private sealed record StagedAttachment(
         string DisplayName,
         string OriginalFileName,
-        string StagedPath);
+        string StagedPath, bool IsExternal = false);
 
     private sealed record QuarantinedFile(string OriginalPath, string QuarantinePath);
 
