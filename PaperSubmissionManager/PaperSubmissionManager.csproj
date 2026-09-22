@@ -1,0 +1,28 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>论文投稿管理助手</AssemblyName>
+    <RootNamespace>PaperSubmissionManager</RootNamespace>
+    <ApplicationIcon />
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.105.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\GPT文件\期刊选择.xlsx" Link="Resources\期刊选择.xlsx" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="使用说明.txt" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
