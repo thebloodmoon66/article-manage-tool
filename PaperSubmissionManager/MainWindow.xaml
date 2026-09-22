@@ -80,7 +80,7 @@
                     <Border Style="{StaticResource CardBorder}">
                         <DockPanel>
                             <WrapPanel DockPanel.Dock="Top"><Button Content="新建论文并导入附件" Style="{StaticResource PrimaryButton}" Click="NewPaper_Click"/><Button Content="刷新" Click="RefreshPapers_Click"/><Button Content="删除" Style="{StaticResource DangerButton}" Click="DeletePaper_Click"/></WrapPanel>
-                            <ListBox x:Name="PaperGrid" SelectionChanged="PaperGrid_SelectionChanged" MouseDoubleClick="PaperGrid_MouseDoubleClick" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                            <ListBox x:Name="PaperGrid" SelectionChanged="PaperGrid_SelectionChanged" MouseDoubleClick="PaperGrid_MouseDoubleClick" HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True" VirtualizingPanel.ScrollUnit="Pixel" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
                                 <ListBox.ItemContainerStyle>
                                     <Style TargetType="{x:Type ListBoxItem}">
                                         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
