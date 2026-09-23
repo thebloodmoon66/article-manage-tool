@@ -2,6 +2,20 @@
 
 Windows 本地桌面软件，用于统一管理期刊资料、论文附件、投稿历史、作者信息和期刊投稿账号。
 
+## 选择版本下载
+
+当前目录对应 **V0.1.3**，只包含该版本的源码和一个对应的便携压缩包。
+
+在 GitHub 文件列表上方点击分支/标签下拉框，切换到 **Tags** 后选择版本。也可以直接使用下表：
+
+| 版本 | 对应源码与文件 | 便携包下载 |
+| --- | --- | --- |
+| V0.1.3.1 | [查看源码](https://github.com/thebloodmoon66/article-manage-tool/tree/v0.1.3.1) | [下载 ZIP](https://github.com/thebloodmoon66/article-manage-tool/raw/refs/tags/v0.1.3.1/论文投稿管理助手-0.1.3.1.zip) |
+| V0.1.3 | [查看源码](https://github.com/thebloodmoon66/article-manage-tool/tree/v0.1.3) | [下载 ZIP](https://github.com/thebloodmoon66/article-manage-tool/raw/refs/tags/v0.1.3/论文投稿管理助手-0.1.3.zip) |
+| V0.1.2 | [查看源码](https://github.com/thebloodmoon66/article-manage-tool/tree/v0.1.2) | [下载 ZIP](https://github.com/thebloodmoon66/article-manage-tool/raw/refs/tags/v0.1.2/论文投稿管理助手-0.1.2.zip) |
+
+main 分支展示最新版本。选择标签后，点击 Code → Download ZIP 可下载该版本的完整仓库快照；直接运行软件请下载表中的便携包。
+
 ## 直接使用
 
 下载并解压 [论文投稿管理助手-0.1.3.zip](./论文投稿管理助手-0.1.3.zip)，保留解压后的完整文件夹，然后运行其中的 `论文投稿管理助手.exe`。
@@ -10,7 +24,6 @@ Windows 本地桌面软件，用于统一管理期刊资料、论文附件、投
 
 路径附件导出时只保存路径，换电脑后需要原路径仍然可用。0.1.3 生成的数据包使用版本 2；可以导入旧版数据包，旧软件不支持导入新版数据包。
 
-历史版本：[0.1.2 便携包](./论文投稿管理助手-0.1.2.zip)，[开发记录](./CHANGELOG.md)。各版本源码保存在对应 Git 标签中。
 
 软件仅在尚未设置数据目录，或原目录已经失效时让用户选择。选择结果记录在便携版程序文件夹内的 `数据目录位置.txt`，之后启动会自动沿用，不会写入 Windows 用户配置目录。数据目录位于便携程序文件夹内部时自动保存为相对路径，整包换盘或换电脑后仍能识别。点击软件右上角带下划线的“数据目录”即可重新选择并自动重启；切换不会自动搬移原目录数据。也可以用 `--data-dir "路径"` 启动参数明确指定并保存目录。
 
