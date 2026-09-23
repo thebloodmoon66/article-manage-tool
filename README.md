@@ -2,6 +2,20 @@
 
 Windows 本地桌面软件，用于统一管理期刊资料、论文附件、投稿历史、作者信息和期刊投稿账号。
 
+## 选择版本下载
+
+当前目录对应 **V0.1.2**，只包含该版本的源码和一个对应的便携压缩包。
+
+在 GitHub 文件列表上方点击分支/标签下拉框，切换到 **Tags** 后选择版本。也可以直接使用下表：
+
+| 版本 | 对应源码与文件 | 便携包下载 |
+| --- | --- | --- |
+| V0.1.3.1 | [查看源码](https://github.com/thebloodmoon66/article-manage-tool/tree/v0.1.3.1) | [下载 ZIP](https://github.com/thebloodmoon66/article-manage-tool/raw/refs/tags/v0.1.3.1/论文投稿管理助手-0.1.3.1.zip) |
+| V0.1.3 | [查看源码](https://github.com/thebloodmoon66/article-manage-tool/tree/v0.1.3) | [下载 ZIP](https://github.com/thebloodmoon66/article-manage-tool/raw/refs/tags/v0.1.3/论文投稿管理助手-0.1.3.zip) |
+| V0.1.2 | [查看源码](https://github.com/thebloodmoon66/article-manage-tool/tree/v0.1.2) | [下载 ZIP](https://github.com/thebloodmoon66/article-manage-tool/raw/refs/tags/v0.1.2/论文投稿管理助手-0.1.2.zip) |
+
+main 分支展示最新版本。选择标签后，点击 Code → Download ZIP 可下载该版本的完整仓库快照；直接运行软件请下载表中的便携包。
+
 ## 直接使用
 
 下载并解压 [论文投稿管理助手-0.1.2.zip](./论文投稿管理助手-0.1.2.zip)，保留解压后的完整文件夹，然后运行其中的 `论文投稿管理助手.exe`。
