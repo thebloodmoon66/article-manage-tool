@@ -226,8 +226,10 @@ public partial class MainWindow : Window
     private void AddPaperAttachment_Click(object sender, RoutedEventArgs e)
     {
         if (PaperGrid.SelectedItem is not PaperRecord paper) { MessageBox.Show(this, "请先选择论文。", "提示"); return; }
+        var linked = AttachmentImportModeWindow.Show(this);
+        if (linked is null) return;
         var picker = new OpenFileDialog { Multiselect = true, Filter = "所有文件|*.*" }; if (picker.ShowDialog(this) != true) return;
-        AddAttachmentFiles(paper, picker.FileNames);
+        AddAttachmentFiles(paper, picker.FileNames, linked.Value);
     }
     private void AttachmentArea_DragOver(object sender, DragEventArgs e)
     {
@@ -241,16 +243,18 @@ public partial class MainWindow : Window
         if (e.Data.GetData(DataFormats.FileDrop) is not string[] paths) return;
         var files = paths.Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         if (files.Length == 0) { MessageBox.Show(this, "请拖入文件；暂不支持直接拖入文件夹。", "提示"); return; }
-        AddAttachmentFiles(paper, files);
+        var linked = AttachmentImportModeWindow.Show(this);
+        if (linked is null) return;
+        AddAttachmentFiles(paper, files, linked.Value);
         e.Handled = true;
     }
-    private void AddAttachmentFiles(PaperRecord paper, IEnumerable<string> files)
+    private void AddAttachmentFiles(PaperRecord paper, IEnumerable<string> files, bool linked)
     {
         var pending = new List<PendingAttachment>();
         foreach (var file in files)
         {
             var name = TextPromptWindow.Show(this, "附件管理名称", $"请输入“{Path.GetFileName(file)}”的管理名称：", Path.GetFileNameWithoutExtension(file));
-            if (!string.IsNullOrWhiteSpace(name)) pending.Add(new PendingAttachment(name, file, LinkAttachmentBox.IsChecked == true));
+            if (!string.IsNullOrWhiteSpace(name)) pending.Add(new PendingAttachment(name, file, linked));
         }
         if (pending.Count == 0) return;
         Run("附件记录已添加", () => { _papers.AddAttachments(paper.Id, pending); LoadSelectedPaper(); RefreshPapers(); });
