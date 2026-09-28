@@ -1,4 +1,6 @@
 using System.IO;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 
 namespace PaperSubmissionManager.Models;
 
@@ -116,6 +118,24 @@ public sealed class RevisionRecord
     public bool IsLatest { get; set; }
     public string RoundDisplay => $"第 {RoundNumber} 轮";
     public string VersionDisplay => $"V{VersionNumber}";
+}
+
+public sealed class RevisionRoundOption
+{
+    public int Number { get; set; }
+    public string Display => $"第 {Number} 轮";
+}
+
+public sealed class RevisionOpinionItemRecord : INotifyPropertyChanged
+{
+    private string _opinion = "";
+    private string _reply = "";
+    public long Id { get; set; }
+    public int Number { get; set; }
+    public string Opinion { get => _opinion; set { _opinion = value; OnChanged(); } }
+    public string Reply { get => _reply; set { _reply = value; OnChanged(); } }
+    public event PropertyChangedEventHandler? PropertyChanged;
+    private void OnChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
 
 public sealed class AuthorRecord

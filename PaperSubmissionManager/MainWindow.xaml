@@ -167,11 +167,21 @@
                                 <StackPanel>
                                     <TextBlock Text="返修意见与回复" FontSize="19" FontWeight="Bold"/>
                                     <TextBlock x:Name="RevisionJournalText" Text="请先选择投稿期刊" Margin="4,6" Foreground="{StaticResource MutedBrush}"/>
-                                    <DockPanel Margin="0,4,0,6"><TextBlock Text="历史版本（选择一行查看意见和对应回复）" VerticalAlignment="Center"/><WrapPanel DockPanel.Dock="Right"><Button Content="保存为新一轮" Click="NewRevision_Click"/><Button Content="保存为新版本" Style="{StaticResource PrimaryButton}" Click="SaveRevisionVersion_Click"/><Button Content="删除整轮" Style="{StaticResource DangerButton}" Click="DeleteRevisionRound_Click"/></WrapPanel></DockPanel>
-                                    <DataGrid x:Name="RevisionGrid" IsReadOnly="True" Height="175" SelectionChanged="RevisionGrid_SelectionChanged"><DataGrid.Columns><DataGridTextColumn Header="轮次" Binding="{Binding RoundDisplay}" Width="90"/><DataGridTextColumn Header="版本" Binding="{Binding VersionDisplay}" Width="70"/><DataGridTextColumn Header="返修意见" Binding="{Binding Opinion}" Width="*"/><DataGridTextColumn Header="回复" Binding="{Binding Reply}" Width="*"/><DataGridTextColumn Header="保存时间" Binding="{Binding RecordedAt}" Width="180"/></DataGrid.Columns></DataGrid>
-                                    <TextBlock Text="返修意见" Margin="4,8,0,2"/><TextBox x:Name="RevisionOpinionBox" Height="95" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
-                                    <TextBlock Text="对应回复" Margin="4,8,0,2"/><TextBox x:Name="RevisionReplyBox" Height="95" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
-                                    <TextBlock Text="新建一轮时录入意见与回复；修改最新版本后点击“保存为新版本”，历史版本会保留。" Margin="4,8,0,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+                                    <WrapPanel Margin="0,6,0,8" VerticalAlignment="Center">
+                                        <TextBlock Text="轮次" VerticalAlignment="Center" Margin="4,0"/>
+                                        <ComboBox x:Name="RevisionRoundBox" Width="130" DisplayMemberPath="Display" SelectionChanged="RevisionRoundBox_SelectionChanged"/>
+                                        <TextBlock Text="版本" VerticalAlignment="Center" Margin="14,0,4,0"/>
+                                        <ComboBox x:Name="RevisionVersionBox" Width="110" DisplayMemberPath="VersionDisplay" IsEnabled="False" SelectionChanged="RevisionVersionBox_SelectionChanged"/>
+                                        <Button Content="新建轮次" Click="StartRevisionRound_Click"/>
+                                        <Button Content="删除整轮" Style="{StaticResource DangerButton}" Click="DeleteRevisionRound_Click"/>
+                                    </WrapPanel>
+                                    <TextBlock x:Name="RevisionSelectionText" Text="选择轮次和版本后显示意见" Margin="4,2,0,6" Foreground="{StaticResource MutedBrush}"/>
+                                    <DockPanel><TextBlock Text="该版本的返修意见" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/><WrapPanel DockPanel.Dock="Right"><Button x:Name="RevisionAddItemButton" Content="添加意见" IsEnabled="False" Click="AddRevisionItem_Click"/><Button x:Name="RevisionRemoveItemButton" Content="移除选中意见" IsEnabled="False" Click="RemoveRevisionItem_Click"/></WrapPanel></DockPanel>
+                                    <DataGrid x:Name="RevisionItemGrid" IsReadOnly="True" Height="205" SelectionChanged="RevisionItemGrid_SelectionChanged"><DataGrid.Columns><DataGridTextColumn Header="序号" Binding="{Binding Number}" Width="60"/><DataGridTextColumn Header="返修意见" Binding="{Binding Opinion}" Width="*"/><DataGridTextColumn Header="对应回复" Binding="{Binding Reply}" Width="*"/></DataGrid.Columns></DataGrid>
+                                    <TextBlock Text="选中意见内容" Margin="4,8,0,2"/><TextBox x:Name="RevisionOpinionBox" Height="95" IsReadOnly="True" Text="{Binding SelectedItem.Opinion, ElementName=RevisionItemGrid, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+                                    <TextBlock Text="对应回复" Margin="4,8,0,2"/><TextBox x:Name="RevisionReplyBox" Height="95" IsReadOnly="True" Text="{Binding SelectedItem.Reply, ElementName=RevisionItemGrid, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+                                    <WrapPanel HorizontalAlignment="Right"><Button x:Name="RevisionSaveRoundButton" Content="保存新轮次" IsEnabled="False" Click="SaveRevisionRound_Click"/><Button x:Name="RevisionSaveVersionButton" Content="保存为新版本" IsEnabled="False" Style="{StaticResource PrimaryButton}" Click="SaveRevisionVersion_Click"/></WrapPanel>
+                                    <TextBlock Text="选择历史版本可查看多条意见。编辑最新版本后保存会生成新版本，旧版本保留。" Margin="4,8,0,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </Border>
                         </StackPanel>

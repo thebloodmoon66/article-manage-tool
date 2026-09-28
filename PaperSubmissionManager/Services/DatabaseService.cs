@@ -133,6 +133,16 @@ public sealed class DatabaseService
             );
             CREATE INDEX IF NOT EXISTS IX_RevisionOpinions_Submission ON RevisionOpinions(PaperSubmissionId, RoundNumber, VersionNumber);
 
+            CREATE TABLE IF NOT EXISTS RevisionOpinionItems (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                RevisionId INTEGER NOT NULL REFERENCES RevisionOpinions(Id) ON DELETE CASCADE,
+                Number INTEGER NOT NULL CHECK(Number > 0),
+                Opinion TEXT NOT NULL,
+                Reply TEXT NOT NULL DEFAULT '',
+                UNIQUE(RevisionId, Number)
+            );
+            CREATE INDEX IF NOT EXISTS IX_RevisionOpinionItems_Revision ON RevisionOpinionItems(RevisionId, Number);
+
             CREATE TABLE IF NOT EXISTS Authors (
                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
                 Name TEXT NOT NULL,
@@ -168,6 +178,15 @@ public sealed class DatabaseService
         command.ExecuteNonQuery();
         EnsureColumn(connection, "PaperSubmissions", "CurrentStatus", "TEXT NOT NULL DEFAULT '未投稿'");
         EnsureColumn(connection, "PaperAttachments", "IsExternal", "INTEGER NOT NULL DEFAULT 0");
+        using (var migrateRevisions = connection.CreateCommand())
+        {
+            migrateRevisions.CommandText = """
+                INSERT INTO RevisionOpinionItems(RevisionId,Number,Opinion,Reply)
+                SELECT r.Id,1,r.Opinion,r.Reply FROM RevisionOpinions r
+                WHERE NOT EXISTS(SELECT 1 FROM RevisionOpinionItems i WHERE i.RevisionId=r.Id);
+                """;
+            migrateRevisions.ExecuteNonQuery();
+        }
         RepairPaperWorkspaceLinks(connection);
     }
 

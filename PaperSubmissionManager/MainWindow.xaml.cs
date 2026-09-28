@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -25,6 +26,10 @@ public partial class MainWindow : Window
     private DataTransferService _dataTransfer = null!;
     private bool _ready;
     private bool _loadingSubmissionStatus;
+    private bool _loadingRevisionSelection;
+    private bool _creatingRevisionRound;
+    private List<RevisionRecord> _revisionVersions = [];
+    private ObservableCollection<RevisionOpinionItemRecord> _revisionDraft = [];
     private JournalAccountRecord? _focusedWorkspaceAccount;
     private AuthorEmailRecord? _focusedAuthorEmail;
 
@@ -217,7 +222,7 @@ public partial class MainWindow : Window
     private void ClearPaperDetail()
     {
         PaperNameBox.Clear(); PaperNotesBox.Clear(); AttachmentGrid.ItemsSource = null; SubmissionGrid.ItemsSource = null; SubmissionNoteGrid.ItemsSource = null; SubmissionHeaderText.Text = "尚未记录投稿期刊";
-        RevisionGrid.ItemsSource = null; RevisionOpinionBox.Clear(); RevisionReplyBox.Clear(); RevisionJournalText.Text = "请先选择投稿期刊";
+        ClearRevisionControls();
         _loadingSubmissionStatus = true; SubmissionStatusBox.SelectedIndex = -1; SubmissionStatusBox.IsEnabled = false; _loadingSubmissionStatus = false;
     }
     private void SavePaperDetails_Click(object sender, RoutedEventArgs e)
@@ -317,9 +322,7 @@ public partial class MainWindow : Window
             _loadingSubmissionStatus = false;
             SubmissionNoteGrid.ItemsSource = _papers.ListSubmissionNotes(item.Id);
             RevisionJournalText.Text = $"当前期刊：{item.JournalName}";
-            RevisionGrid.ItemsSource = _revisions.List(item.Id);
-            RevisionGrid.SelectedIndex = -1;
-            RevisionOpinionBox.Clear(); RevisionReplyBox.Clear();
+            RefreshRevisions(item.Id);
         }
         else
         {
@@ -329,44 +332,133 @@ public partial class MainWindow : Window
             SubmissionStatusBox.IsEnabled = false;
             _loadingSubmissionStatus = false;
             SubmissionNoteGrid.ItemsSource = null;
-            RevisionGrid.ItemsSource = null; RevisionOpinionBox.Clear(); RevisionReplyBox.Clear(); RevisionJournalText.Text = "请先选择投稿期刊";
+            ClearRevisionControls();
         }
     }
-    private void RevisionGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void ClearRevisionControls()
     {
-        if (RevisionGrid.SelectedItem is RevisionRecord version)
+        _loadingRevisionSelection = true;
+        _creatingRevisionRound = false;
+        _revisionVersions = [];
+        RevisionRoundBox.ItemsSource = null;
+        RevisionVersionBox.ItemsSource = null;
+        RevisionVersionBox.IsEnabled = false;
+        _loadingRevisionSelection = false;
+        ClearRevisionDraft();
+        RevisionJournalText.Text = "请先选择投稿期刊";
+        RevisionSelectionText.Text = "选择轮次和版本后显示意见";
+    }
+    private void ClearRevisionDraft()
+    {
+        _revisionDraft = [];
+        RevisionItemGrid.ItemsSource = _revisionDraft;
+        UpdateRevisionEditState();
+    }
+    private void UpdateRevisionEditState()
+    {
+        var canEdit = _creatingRevisionRound || RevisionVersionBox.SelectedItem is RevisionRecord { IsLatest: true };
+        RevisionAddItemButton.IsEnabled = canEdit;
+        RevisionRemoveItemButton.IsEnabled = canEdit && RevisionItemGrid.SelectedItem is RevisionOpinionItemRecord;
+        RevisionOpinionBox.IsReadOnly = !canEdit;
+        RevisionReplyBox.IsReadOnly = !canEdit;
+        RevisionSaveRoundButton.IsEnabled = _creatingRevisionRound;
+        RevisionSaveVersionButton.IsEnabled = !_creatingRevisionRound && RevisionVersionBox.SelectedItem is RevisionRecord { IsLatest: true };
+    }
+    private void RevisionRoundBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingRevisionSelection) return;
+        _creatingRevisionRound = false;
+        var round = RevisionRoundBox.SelectedItem as RevisionRoundOption;
+        RevisionVersionBox.ItemsSource = round is null ? null : _revisionVersions.Where(x => x.RoundNumber == round.Number).ToList();
+        RevisionVersionBox.SelectedIndex = -1;
+        RevisionVersionBox.IsEnabled = round is not null;
+        ClearRevisionDraft();
+        RevisionSelectionText.Text = round is null ? "选择轮次和版本后显示意见" : "请选择版本以查看本轮意见";
+    }
+    private void RevisionVersionBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loadingRevisionSelection) return;
+        ShowSelectedRevision();
+    }
+    private void ShowSelectedRevision()
+    {
+        _creatingRevisionRound = false;
+        if (RevisionVersionBox.SelectedItem is RevisionRecord version)
         {
-            RevisionOpinionBox.Text = version.Opinion;
-            RevisionReplyBox.Text = version.Reply;
+            _revisionDraft = new ObservableCollection<RevisionOpinionItemRecord>(_revisions.ListItems(version.Id));
+            RevisionItemGrid.ItemsSource = _revisionDraft;
+            RevisionItemGrid.SelectedIndex = _revisionDraft.Count > 0 ? 0 : -1;
+            RevisionSelectionText.Text = $"第 {version.RoundNumber} 轮 · V{version.VersionNumber} · {version.RecordedAt}";
         }
+        else
+        {
+            ClearRevisionDraft();
+            RevisionSelectionText.Text = "请选择版本以查看本轮意见";
+        }
+        UpdateRevisionEditState();
     }
-    private void NewRevision_Click(object sender, RoutedEventArgs e)
+    private void RevisionItemGrid_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateRevisionEditState();
+    private void StartRevisionRound_Click(object sender, RoutedEventArgs e)
     {
-        if (SubmissionGrid.SelectedItem is not PaperSubmissionRecord submission) { MessageBox.Show(this, "请先选择投稿期刊。", "提示"); return; }
-        Run("返修意见已记录", () => { var id = _revisions.AddRound(submission.Id, RevisionOpinionBox.Text, RevisionReplyBox.Text); RefreshRevisions(submission.Id, id); });
+        if (SubmissionGrid.SelectedItem is not PaperSubmissionRecord) { MessageBox.Show(this, "请先选择投稿期刊。", "提示"); return; }
+        _loadingRevisionSelection = true;
+        RevisionRoundBox.SelectedIndex = -1;
+        RevisionVersionBox.ItemsSource = null;
+        RevisionVersionBox.IsEnabled = false;
+        _loadingRevisionSelection = false;
+        _creatingRevisionRound = true;
+        _revisionDraft = [new RevisionOpinionItemRecord { Number = 1 }];
+        RevisionItemGrid.ItemsSource = _revisionDraft;
+        RevisionItemGrid.SelectedIndex = 0;
+        RevisionSelectionText.Text = "新轮次草稿：请填写意见，必要时添加更多意见，然后保存";
+        UpdateRevisionEditState();
+    }
+    private void AddRevisionItem_Click(object sender, RoutedEventArgs e)
+    {
+        var item = new RevisionOpinionItemRecord { Number = _revisionDraft.Count + 1 };
+        _revisionDraft.Add(item);
+        RevisionItemGrid.SelectedItem = item;
+        UpdateRevisionEditState();
+    }
+    private void RemoveRevisionItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (RevisionItemGrid.SelectedItem is not RevisionOpinionItemRecord item) return;
+        _revisionDraft.Remove(item);
+        for (var i = 0; i < _revisionDraft.Count; i++) _revisionDraft[i].Number = i + 1;
+        RevisionItemGrid.Items.Refresh();
+        if (_revisionDraft.Count > 0) RevisionItemGrid.SelectedIndex = Math.Min(item.Number - 1, _revisionDraft.Count - 1);
+        UpdateRevisionEditState();
+    }
+    private void SaveRevisionRound_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_creatingRevisionRound || SubmissionGrid.SelectedItem is not PaperSubmissionRecord submission) return;
+        Run("返修意见已记录", () => { var id = _revisions.AddRound(submission.Id, _revisionDraft.ToList()); RefreshRevisions(submission.Id, id); });
     }
     private void SaveRevisionVersion_Click(object sender, RoutedEventArgs e)
     {
-        if (RevisionGrid.SelectedItem is not RevisionRecord version) { MessageBox.Show(this, "请先选择返修意见的最新版本。", "提示"); return; }
-        Run("返修意见新版本已保存", () => { var id = _revisions.AddVersion(version.Id, RevisionOpinionBox.Text, RevisionReplyBox.Text); RefreshRevisions(version.PaperSubmissionId, id); });
+        if (RevisionVersionBox.SelectedItem is not RevisionRecord version || !version.IsLatest) return;
+        Run("返修意见新版本已保存", () => { var id = _revisions.AddVersion(version.Id, _revisionDraft.ToList()); RefreshRevisions(version.PaperSubmissionId, id); });
     }
     private void DeleteRevisionRound_Click(object sender, RoutedEventArgs e)
     {
-        if (RevisionGrid.SelectedItem is not RevisionRecord version || !Confirm(this, $"确定删除第 {version.RoundNumber} 轮返修意见及其全部版本吗？")) return;
-        Run("返修意见已删除", () => RefreshAfterRevisionDelete(version));
-    }
-    private void RefreshAfterRevisionDelete(RevisionRecord version)
-    {
-        _revisions.DeleteRound(version.PaperSubmissionId, version.RoundNumber);
-        RefreshRevisions(version.PaperSubmissionId);
+        if (SubmissionGrid.SelectedItem is not PaperSubmissionRecord submission || RevisionRoundBox.SelectedItem is not RevisionRoundOption round || !Confirm(this, $"确定删除第 {round.Number} 轮返修意见及其全部版本吗？")) return;
+        Run("返修意见已删除", () => { _revisions.DeleteRound(submission.Id, round.Number); RefreshRevisions(submission.Id); });
     }
     private void RefreshRevisions(long submissionId, long? selectedId = null)
     {
         if (SubmissionGrid.SelectedItem is not PaperSubmissionRecord submission || submission.Id != submissionId) return;
-        var versions = _revisions.List(submissionId);
-        RevisionGrid.ItemsSource = versions;
-        RevisionGrid.SelectedItem = selectedId is null ? null : versions.FirstOrDefault(x => x.Id == selectedId);
-        if (RevisionGrid.SelectedItem is null) { RevisionOpinionBox.Clear(); RevisionReplyBox.Clear(); }
+        _loadingRevisionSelection = true;
+        _creatingRevisionRound = false;
+        _revisionVersions = _revisions.List(submissionId);
+        RevisionRoundBox.ItemsSource = _revisionVersions.Select(x => x.RoundNumber).Distinct().Select(x => new RevisionRoundOption { Number = x }).ToList();
+        var version = _revisionVersions.FirstOrDefault(x => x.Id == selectedId);
+        RevisionRoundBox.SelectedItem = version is null ? null : (RevisionRoundBox.ItemsSource as IEnumerable<RevisionRoundOption>)?.FirstOrDefault(x => x.Number == version.RoundNumber);
+        RevisionVersionBox.ItemsSource = version is null ? null : _revisionVersions.Where(x => x.RoundNumber == version.RoundNumber).ToList();
+        RevisionVersionBox.IsEnabled = version is not null;
+        RevisionVersionBox.SelectedItem = version;
+        _loadingRevisionSelection = false;
+        ShowSelectedRevision();
+        if (version is null) RevisionSelectionText.Text = "选择轮次和版本后显示意见";
     }
     private void SubmissionStatusBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
