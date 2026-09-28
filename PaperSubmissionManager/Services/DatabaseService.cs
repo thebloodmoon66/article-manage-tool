@@ -121,6 +121,18 @@ public sealed class DatabaseService
             );
             CREATE INDEX IF NOT EXISTS IX_SubmissionNotes_Current ON SubmissionNotes(PaperSubmissionId, IsCurrent);
 
+            CREATE TABLE IF NOT EXISTS RevisionOpinions (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                PaperSubmissionId INTEGER NOT NULL REFERENCES PaperSubmissions(Id) ON DELETE CASCADE,
+                RoundNumber INTEGER NOT NULL CHECK(RoundNumber > 0),
+                VersionNumber INTEGER NOT NULL CHECK(VersionNumber > 0),
+                Opinion TEXT NOT NULL,
+                Reply TEXT NOT NULL DEFAULT '',
+                RecordedAt TEXT NOT NULL,
+                UNIQUE(PaperSubmissionId, RoundNumber, VersionNumber)
+            );
+            CREATE INDEX IF NOT EXISTS IX_RevisionOpinions_Submission ON RevisionOpinions(PaperSubmissionId, RoundNumber, VersionNumber);
+
             CREATE TABLE IF NOT EXISTS Authors (
                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
                 Name TEXT NOT NULL,

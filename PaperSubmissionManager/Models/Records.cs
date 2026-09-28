@@ -104,6 +104,20 @@ public sealed class SubmissionNoteRecord
     public bool IsCurrent { get; set; }
 }
 
+public sealed class RevisionRecord
+{
+    public long Id { get; set; }
+    public long PaperSubmissionId { get; set; }
+    public int RoundNumber { get; set; }
+    public int VersionNumber { get; set; }
+    public string Opinion { get; set; } = "";
+    public string Reply { get; set; } = "";
+    public string RecordedAt { get; set; } = "";
+    public bool IsLatest { get; set; }
+    public string RoundDisplay => $"第 {RoundNumber} 轮";
+    public string VersionDisplay => $"V{VersionNumber}";
+}
+
 public sealed class AuthorRecord
 {
     public long Id { get; set; }

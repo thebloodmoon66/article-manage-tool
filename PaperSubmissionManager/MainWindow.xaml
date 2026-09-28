@@ -163,6 +163,17 @@
                                     <DataGrid x:Name="SubmissionNoteGrid" IsReadOnly="True" Height="240"><DataGrid.Columns><DataGridTextColumn Header="纪要内容" Binding="{Binding Content}" Width="*"/><DataGridTextColumn Header="填写时间" Binding="{Binding RecordedAt}" Width="190"/></DataGrid.Columns></DataGrid>
                                 </StackPanel>
                             </Border>
+                            <Border Style="{StaticResource CardBorder}">
+                                <StackPanel>
+                                    <TextBlock Text="返修意见与回复" FontSize="19" FontWeight="Bold"/>
+                                    <TextBlock x:Name="RevisionJournalText" Text="请先选择投稿期刊" Margin="4,6" Foreground="{StaticResource MutedBrush}"/>
+                                    <DockPanel Margin="0,4,0,6"><TextBlock Text="历史版本（选择一行查看意见和对应回复）" VerticalAlignment="Center"/><WrapPanel DockPanel.Dock="Right"><Button Content="保存为新一轮" Click="NewRevision_Click"/><Button Content="保存为新版本" Style="{StaticResource PrimaryButton}" Click="SaveRevisionVersion_Click"/><Button Content="删除整轮" Style="{StaticResource DangerButton}" Click="DeleteRevisionRound_Click"/></WrapPanel></DockPanel>
+                                    <DataGrid x:Name="RevisionGrid" IsReadOnly="True" Height="175" SelectionChanged="RevisionGrid_SelectionChanged"><DataGrid.Columns><DataGridTextColumn Header="轮次" Binding="{Binding RoundDisplay}" Width="90"/><DataGridTextColumn Header="版本" Binding="{Binding VersionDisplay}" Width="70"/><DataGridTextColumn Header="返修意见" Binding="{Binding Opinion}" Width="*"/><DataGridTextColumn Header="回复" Binding="{Binding Reply}" Width="*"/><DataGridTextColumn Header="保存时间" Binding="{Binding RecordedAt}" Width="180"/></DataGrid.Columns></DataGrid>
+                                    <TextBlock Text="返修意见" Margin="4,8,0,2"/><TextBox x:Name="RevisionOpinionBox" Height="95" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+                                    <TextBlock Text="对应回复" Margin="4,8,0,2"/><TextBox x:Name="RevisionReplyBox" Height="95" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+                                    <TextBlock Text="新建一轮时录入意见与回复；修改最新版本后点击“保存为新版本”，历史版本会保留。" Margin="4,8,0,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>

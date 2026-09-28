@@ -8,7 +8,7 @@ namespace PaperSubmissionManager.Services;
 
 public sealed class DataTransferService(DatabaseService database, BackupService backups, PaperService papers)
 {
-    private const int PackageVersion = 2;
+    private const int PackageVersion = 3;
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
 
     public TransferResult Export(string destinationPath)
@@ -124,11 +124,20 @@ public sealed class DataTransferService(DatabaseService database, BackupService 
             }
             foreach (var submission in paper.Submissions)
             {
-                using var command = connection.CreateCommand();
-                command.CommandText = "SELECT VersionGroupId,VersionNumber,Content,RecordedAt,IsCurrent FROM SubmissionNotes WHERE PaperSubmissionId=$id ORDER BY RecordedAt,Id;";
-                command.Parameters.AddWithValue("$id", submission.SourceId);
-                using var reader = command.ExecuteReader();
-                while (reader.Read()) submission.Notes.Add(new TransferNote { VersionGroupId = reader.GetString(0), VersionNumber = reader.GetInt32(1), Content = reader.GetString(2), RecordedAt = reader.GetString(3), IsCurrent = reader.GetInt32(4) == 1 });
+                using (var command = connection.CreateCommand())
+                {
+                    command.CommandText = "SELECT VersionGroupId,VersionNumber,Content,RecordedAt,IsCurrent FROM SubmissionNotes WHERE PaperSubmissionId=$id ORDER BY RecordedAt,Id;";
+                    command.Parameters.AddWithValue("$id", submission.SourceId);
+                    using var reader = command.ExecuteReader();
+                    while (reader.Read()) submission.Notes.Add(new TransferNote { VersionGroupId = reader.GetString(0), VersionNumber = reader.GetInt32(1), Content = reader.GetString(2), RecordedAt = reader.GetString(3), IsCurrent = reader.GetInt32(4) == 1 });
+                }
+                using (var command = connection.CreateCommand())
+                {
+                    command.CommandText = "SELECT RoundNumber,VersionNumber,Opinion,Reply,RecordedAt FROM RevisionOpinions WHERE PaperSubmissionId=$id ORDER BY RoundNumber,VersionNumber;";
+                    command.Parameters.AddWithValue("$id", submission.SourceId);
+                    using var reader = command.ExecuteReader();
+                    while (reader.Read()) submission.Revisions.Add(new TransferRevision { RoundNumber = reader.GetInt32(0), VersionNumber = reader.GetInt32(1), Opinion = reader.GetString(2), Reply = reader.GetString(3), RecordedAt = reader.GetString(4) });
+                }
             }
         }
 
@@ -341,6 +350,7 @@ public sealed class DataTransferService(DatabaseService database, BackupService 
                 using var update = Cmd(connection, transaction, "UPDATE PaperSubmissions SET JournalWorkspaceId=$workspace,JournalName=$journal,CurrentStatus=$status,RecordedAt=$time WHERE Id=$id;");
                 update.Parameters.AddWithValue("$id", id.Value); AddSubmissionParameters(update, paperId, workspaceId, submission, status); update.ExecuteNonQuery();
                 using var deleteNotes = Cmd(connection, transaction, "DELETE FROM SubmissionNotes WHERE PaperSubmissionId=$id;"); deleteNotes.Parameters.AddWithValue("$id", id.Value); deleteNotes.ExecuteNonQuery();
+                using var deleteRevisions = Cmd(connection, transaction, "DELETE FROM RevisionOpinions WHERE PaperSubmissionId=$id;"); deleteRevisions.Parameters.AddWithValue("$id", id.Value); deleteRevisions.ExecuteNonQuery();
             }
             var groupMap = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var note in submission.Notes)
@@ -349,6 +359,17 @@ public sealed class DataTransferService(DatabaseService database, BackupService 
                 if (!groupMap.TryGetValue(sourceGroup, out var targetGroup)) groupMap[sourceGroup] = targetGroup = Guid.NewGuid().ToString("N");
                 using var insertNote = Cmd(connection, transaction, "INSERT INTO SubmissionNotes(PaperSubmissionId,VersionGroupId,VersionNumber,Content,RecordedAt,IsCurrent) VALUES($submission,$group,$version,$content,$time,$current);");
                 insertNote.Parameters.AddWithValue("$submission", id.Value); insertNote.Parameters.AddWithValue("$group", targetGroup); insertNote.Parameters.AddWithValue("$version", Math.Max(1, note.VersionNumber)); insertNote.Parameters.AddWithValue("$content", Required(note.Content, "状态纪要")); insertNote.Parameters.AddWithValue("$time", ValidTime(note.RecordedAt)); insertNote.Parameters.AddWithValue("$current", note.IsCurrent ? 1 : 0); insertNote.ExecuteNonQuery();
+            }
+            foreach (var revision in submission.Revisions)
+            {
+                using var insertRevision = Cmd(connection, transaction, "INSERT INTO RevisionOpinions(PaperSubmissionId,RoundNumber,VersionNumber,Opinion,Reply,RecordedAt) VALUES($submission,$round,$version,$opinion,$reply,$time);");
+                insertRevision.Parameters.AddWithValue("$submission", id.Value);
+                insertRevision.Parameters.AddWithValue("$round", revision.RoundNumber);
+                insertRevision.Parameters.AddWithValue("$version", revision.VersionNumber);
+                insertRevision.Parameters.AddWithValue("$opinion", Required(revision.Opinion, "返修意见"));
+                insertRevision.Parameters.AddWithValue("$reply", revision.Reply ?? "");
+                insertRevision.Parameters.AddWithValue("$time", ValidTime(revision.RecordedAt));
+                insertRevision.ExecuteNonQuery();
             }
         }
     }
@@ -390,7 +411,7 @@ public sealed class DataTransferService(DatabaseService database, BackupService 
 
     private static void ValidatePackage(TransferPackage package, ZipArchive archive)
     {
-        if (package.Version != 1 && package.Version != PackageVersion) throw new InvalidDataException($"不支持的数据包版本：{package.Version}。");
+        if (package.Version is not (1 or 2 or PackageVersion)) throw new InvalidDataException($"不支持的数据包版本：{package.Version}。");
         if (package.Papers.Count > 100000 || package.Authors.Count > 100000 || package.Workspaces.Count > 100000) throw new InvalidDataException("数据包记录数量异常。");
         long total = 0;
         foreach (var attachment in package.Papers.SelectMany(x => x.Attachments))
@@ -411,7 +432,8 @@ public sealed class DataTransferService(DatabaseService database, BackupService 
     private sealed class TransferPackage { public int Version { get; set; } public string ExportedAt { get; set; } = ""; public List<TransferPaper> Papers { get; set; } = []; public List<TransferAuthor> Authors { get; set; } = []; public List<TransferWorkspace> Workspaces { get; set; } = []; }
     private sealed class TransferPaper { public long SourceId { get; set; } public string Name { get; set; } = ""; public string Notes { get; set; } = ""; public string CreatedAt { get; set; } = ""; public List<TransferAttachment> Attachments { get; set; } = []; public List<TransferSubmission> Submissions { get; set; } = []; }
     private sealed class TransferAttachment { public bool IsExternal { get; set; } public string ExternalPath { get; set; } = ""; public long SourceId { get; set; } public string DisplayName { get; set; } = ""; public string OriginalFileName { get; set; } = ""; public string CreatedAt { get; set; } = ""; public string PackageEntry { get; set; } = ""; }
-    private sealed class TransferSubmission { public long SourceId { get; set; } public string JournalName { get; set; } = ""; public string WorkspaceName { get; set; } = ""; public string CurrentStatus { get; set; } = "未投稿"; public string RecordedAt { get; set; } = ""; public List<TransferNote> Notes { get; set; } = []; }
+    private sealed class TransferSubmission { public long SourceId { get; set; } public string JournalName { get; set; } = ""; public string WorkspaceName { get; set; } = ""; public string CurrentStatus { get; set; } = "未投稿"; public string RecordedAt { get; set; } = ""; public List<TransferNote> Notes { get; set; } = []; public List<TransferRevision> Revisions { get; set; } = []; }
+    private sealed class TransferRevision { public int RoundNumber { get; set; } public int VersionNumber { get; set; } public string Opinion { get; set; } = ""; public string Reply { get; set; } = ""; public string RecordedAt { get; set; } = ""; }
     private sealed class TransferNote { public string VersionGroupId { get; set; } = ""; public int VersionNumber { get; set; } public string Content { get; set; } = ""; public string RecordedAt { get; set; } = ""; public bool IsCurrent { get; set; } }
     private sealed class TransferAuthor { public long SourceId { get; set; } public string Name { get; set; } = ""; public string CreatedAt { get; set; } = ""; public List<string> Emails { get; set; } = []; }
     private sealed class TransferWorkspace { public long SourceId { get; set; } public string JournalName { get; set; } = ""; public string SubmissionLink { get; set; } = ""; public string CreatedAt { get; set; } = ""; public string UpdatedAt { get; set; } = ""; public List<TransferAccount> Accounts { get; set; } = []; public List<long> LinkedPaperSourceIds { get; set; } = []; }

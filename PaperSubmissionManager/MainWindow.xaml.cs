@@ -19,6 +19,7 @@ public partial class MainWindow : Window
     private BackupService _backups = null!;
     private JournalImportService _journals = null!;
     private PaperService _papers = null!;
+    private RevisionService _revisions = null!;
     private AuthorService _authors = null!;
     private JournalWorkspaceService _workspaces = null!;
     private DataTransferService _dataTransfer = null!;
@@ -32,7 +33,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         _paths = new AppPaths(dataRoot); _database = new DatabaseService(_paths); _database.Initialize();
         _backups = new BackupService(_database); _journals = new JournalImportService(_database, _backups);
-        _papers = new PaperService(_database); _authors = new AuthorService(_database); _workspaces = new JournalWorkspaceService(_database);
+        _papers = new PaperService(_database); _revisions = new RevisionService(_database); _authors = new AuthorService(_database); _workspaces = new JournalWorkspaceService(_database);
         _workspaces.RemoveLegacyEmptyAccounts();
         SubmissionStatusBox.ItemsSource = PaperService.SubmissionStatuses;
         _papers.NormalizeLegacyAttachmentFileNames();
@@ -216,6 +217,7 @@ public partial class MainWindow : Window
     private void ClearPaperDetail()
     {
         PaperNameBox.Clear(); PaperNotesBox.Clear(); AttachmentGrid.ItemsSource = null; SubmissionGrid.ItemsSource = null; SubmissionNoteGrid.ItemsSource = null; SubmissionHeaderText.Text = "尚未记录投稿期刊";
+        RevisionGrid.ItemsSource = null; RevisionOpinionBox.Clear(); RevisionReplyBox.Clear(); RevisionJournalText.Text = "请先选择投稿期刊";
         _loadingSubmissionStatus = true; SubmissionStatusBox.SelectedIndex = -1; SubmissionStatusBox.IsEnabled = false; _loadingSubmissionStatus = false;
     }
     private void SavePaperDetails_Click(object sender, RoutedEventArgs e)
@@ -301,7 +303,7 @@ public partial class MainWindow : Window
     }
     private void DeleteSubmission_Click(object sender, RoutedEventArgs e)
     {
-        if (SubmissionGrid.SelectedItem is not PaperSubmissionRecord item || !Confirm(this, "确定删除此条投稿历史及其纪要版本吗？")) return;
+        if (SubmissionGrid.SelectedItem is not PaperSubmissionRecord item || !Confirm(this, "确定删除此条投稿历史、状态纪要及返修意见的全部版本吗？")) return;
         Run("投稿历史已删除", () => { _papers.DeleteSubmission(item.Id); LoadSelectedPaper(); RefreshPapers(); RefreshWorkspaces(); LoadWorkspaceDetail(); });
     }
     private void SubmissionGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -314,6 +316,10 @@ public partial class MainWindow : Window
             SubmissionStatusBox.SelectedItem = item.CurrentStatus;
             _loadingSubmissionStatus = false;
             SubmissionNoteGrid.ItemsSource = _papers.ListSubmissionNotes(item.Id);
+            RevisionJournalText.Text = $"当前期刊：{item.JournalName}";
+            RevisionGrid.ItemsSource = _revisions.List(item.Id);
+            RevisionGrid.SelectedIndex = -1;
+            RevisionOpinionBox.Clear(); RevisionReplyBox.Clear();
         }
         else
         {
@@ -323,7 +329,44 @@ public partial class MainWindow : Window
             SubmissionStatusBox.IsEnabled = false;
             _loadingSubmissionStatus = false;
             SubmissionNoteGrid.ItemsSource = null;
+            RevisionGrid.ItemsSource = null; RevisionOpinionBox.Clear(); RevisionReplyBox.Clear(); RevisionJournalText.Text = "请先选择投稿期刊";
         }
+    }
+    private void RevisionGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (RevisionGrid.SelectedItem is RevisionRecord version)
+        {
+            RevisionOpinionBox.Text = version.Opinion;
+            RevisionReplyBox.Text = version.Reply;
+        }
+    }
+    private void NewRevision_Click(object sender, RoutedEventArgs e)
+    {
+        if (SubmissionGrid.SelectedItem is not PaperSubmissionRecord submission) { MessageBox.Show(this, "请先选择投稿期刊。", "提示"); return; }
+        Run("返修意见已记录", () => { var id = _revisions.AddRound(submission.Id, RevisionOpinionBox.Text, RevisionReplyBox.Text); RefreshRevisions(submission.Id, id); });
+    }
+    private void SaveRevisionVersion_Click(object sender, RoutedEventArgs e)
+    {
+        if (RevisionGrid.SelectedItem is not RevisionRecord version) { MessageBox.Show(this, "请先选择返修意见的最新版本。", "提示"); return; }
+        Run("返修意见新版本已保存", () => { var id = _revisions.AddVersion(version.Id, RevisionOpinionBox.Text, RevisionReplyBox.Text); RefreshRevisions(version.PaperSubmissionId, id); });
+    }
+    private void DeleteRevisionRound_Click(object sender, RoutedEventArgs e)
+    {
+        if (RevisionGrid.SelectedItem is not RevisionRecord version || !Confirm(this, $"确定删除第 {version.RoundNumber} 轮返修意见及其全部版本吗？")) return;
+        Run("返修意见已删除", () => RefreshAfterRevisionDelete(version));
+    }
+    private void RefreshAfterRevisionDelete(RevisionRecord version)
+    {
+        _revisions.DeleteRound(version.PaperSubmissionId, version.RoundNumber);
+        RefreshRevisions(version.PaperSubmissionId);
+    }
+    private void RefreshRevisions(long submissionId, long? selectedId = null)
+    {
+        if (SubmissionGrid.SelectedItem is not PaperSubmissionRecord submission || submission.Id != submissionId) return;
+        var versions = _revisions.List(submissionId);
+        RevisionGrid.ItemsSource = versions;
+        RevisionGrid.SelectedItem = selectedId is null ? null : versions.FirstOrDefault(x => x.Id == selectedId);
+        if (RevisionGrid.SelectedItem is null) { RevisionOpinionBox.Clear(); RevisionReplyBox.Clear(); }
     }
     private void SubmissionStatusBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
