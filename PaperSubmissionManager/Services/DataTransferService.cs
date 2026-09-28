@@ -8,7 +8,7 @@ namespace PaperSubmissionManager.Services;
 
 public sealed class DataTransferService(DatabaseService database, BackupService backups, PaperService papers)
 {
-    private const int PackageVersion = 4;
+    private const int PackageVersion = 5;
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
 
     public TransferResult Export(string destinationPath)
@@ -141,10 +141,10 @@ public sealed class DataTransferService(DatabaseService database, BackupService 
                 foreach (var revision in submission.Revisions)
                 {
                     using var command = connection.CreateCommand();
-                    command.CommandText = "SELECT Number,Opinion,Reply FROM RevisionOpinionItems WHERE RevisionId=$revision ORDER BY Number;";
+                    command.CommandText = "SELECT Number,Opinion,Reply,Notes FROM RevisionOpinionItems WHERE RevisionId=$revision ORDER BY Number;";
                     command.Parameters.AddWithValue("$revision", revision.SourceId);
                     using var reader = command.ExecuteReader();
-                    while (reader.Read()) revision.Items.Add(new TransferRevisionItem { Number = reader.GetInt32(0), Opinion = reader.GetString(1), Reply = reader.GetString(2) });
+                    while (reader.Read()) revision.Items.Add(new TransferRevisionItem { Number = reader.GetInt32(0), Opinion = reader.GetString(1), Reply = reader.GetString(2), Notes = reader.GetString(3) });
                 }
             }
         }
@@ -381,11 +381,12 @@ public sealed class DataTransferService(DatabaseService database, BackupService 
                 var revisionId = Convert.ToInt64(insertRevision.ExecuteScalar(), CultureInfo.InvariantCulture);
                 foreach (var item in items)
                 {
-                    using var insertItem = Cmd(connection, transaction, "INSERT INTO RevisionOpinionItems(RevisionId,Number,Opinion,Reply) VALUES($revision,$number,$opinion,$reply);");
+                    using var insertItem = Cmd(connection, transaction, "INSERT INTO RevisionOpinionItems(RevisionId,Number,Opinion,Reply,Notes) VALUES($revision,$number,$opinion,$reply,$notes);");
                     insertItem.Parameters.AddWithValue("$revision", revisionId);
                     insertItem.Parameters.AddWithValue("$number", item.Number);
                     insertItem.Parameters.AddWithValue("$opinion", Required(item.Opinion, "返修意见"));
                     insertItem.Parameters.AddWithValue("$reply", item.Reply ?? "");
+                    insertItem.Parameters.AddWithValue("$notes", item.Notes ?? "");
                     insertItem.ExecuteNonQuery();
                 }
             }
@@ -429,11 +430,11 @@ public sealed class DataTransferService(DatabaseService database, BackupService 
 
     private static void ValidatePackage(TransferPackage package, ZipArchive archive)
     {
-        if (package.Version is not (1 or 2 or 3 or PackageVersion)) throw new InvalidDataException($"不支持的数据包版本：{package.Version}。");
+        if (package.Version is not (1 or 2 or 3 or 4 or PackageVersion)) throw new InvalidDataException($"不支持的数据包版本：{package.Version}。");
         if (package.Papers.Count > 100000 || package.Authors.Count > 100000 || package.Workspaces.Count > 100000) throw new InvalidDataException("数据包记录数量异常。");
         foreach (var revision in package.Papers.SelectMany(x => x.Submissions).SelectMany(x => x.Revisions))
         {
-            if (revision.RoundNumber <= 0 || revision.VersionNumber <= 0 || (package.Version == 4 && revision.Items.Count == 0))
+            if (revision.RoundNumber <= 0 || revision.VersionNumber <= 0 || (package.Version >= 4 && revision.Items.Count == 0))
                 throw new InvalidDataException("返修意见版本无效。");
             if (revision.Items.Count > 10000 || revision.Items.Any(x => x.Number <= 0 || string.IsNullOrWhiteSpace(x.Opinion)))
                 throw new InvalidDataException("返修意见条目无效。");
@@ -459,7 +460,7 @@ public sealed class DataTransferService(DatabaseService database, BackupService 
     private sealed class TransferAttachment { public bool IsExternal { get; set; } public string ExternalPath { get; set; } = ""; public long SourceId { get; set; } public string DisplayName { get; set; } = ""; public string OriginalFileName { get; set; } = ""; public string CreatedAt { get; set; } = ""; public string PackageEntry { get; set; } = ""; }
     private sealed class TransferSubmission { public long SourceId { get; set; } public string JournalName { get; set; } = ""; public string WorkspaceName { get; set; } = ""; public string CurrentStatus { get; set; } = "未投稿"; public string RecordedAt { get; set; } = ""; public List<TransferNote> Notes { get; set; } = []; public List<TransferRevision> Revisions { get; set; } = []; }
     private sealed class TransferRevision { public long SourceId { get; set; } public int RoundNumber { get; set; } public int VersionNumber { get; set; } public string Opinion { get; set; } = ""; public string Reply { get; set; } = ""; public string RecordedAt { get; set; } = ""; public List<TransferRevisionItem> Items { get; set; } = []; }
-    private sealed class TransferRevisionItem { public int Number { get; set; } public string Opinion { get; set; } = ""; public string Reply { get; set; } = ""; }
+    private sealed class TransferRevisionItem { public int Number { get; set; } public string Opinion { get; set; } = ""; public string Reply { get; set; } = ""; public string Notes { get; set; } = ""; }
     private sealed class TransferNote { public string VersionGroupId { get; set; } = ""; public int VersionNumber { get; set; } public string Content { get; set; } = ""; public string RecordedAt { get; set; } = ""; public bool IsCurrent { get; set; } }
     private sealed class TransferAuthor { public long SourceId { get; set; } public string Name { get; set; } = ""; public string CreatedAt { get; set; } = ""; public List<string> Emails { get; set; } = []; }
     private sealed class TransferWorkspace { public long SourceId { get; set; } public string JournalName { get; set; } = ""; public string SubmissionLink { get; set; } = ""; public string CreatedAt { get; set; } = ""; public string UpdatedAt { get; set; } = ""; public List<TransferAccount> Accounts { get; set; } = []; public List<long> LinkedPaperSourceIds { get; set; } = []; }

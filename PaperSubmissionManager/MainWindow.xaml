@@ -165,7 +165,7 @@
                             </Border>
                             <Border Style="{StaticResource CardBorder}">
                                 <StackPanel>
-                                    <TextBlock Text="返修意见与回复" FontSize="19" FontWeight="Bold"/>
+                                    <DockPanel><TextBlock Text="返修意见与回复" FontSize="19" FontWeight="Bold" VerticalAlignment="Center"/><WrapPanel DockPanel.Dock="Right"><Button Content="提示词预处理" Click="PrepareRevisionPrompt_Click"/><Button x:Name="RevisionImportButton" Content="导入意见" IsEnabled="False" Click="ImportRevisionComments_Click"/></WrapPanel></DockPanel>
                                     <TextBlock x:Name="RevisionJournalText" Text="请先选择投稿期刊" Margin="4,6" Foreground="{StaticResource MutedBrush}"/>
                                     <WrapPanel Margin="0,6,0,8" VerticalAlignment="Center">
                                         <TextBlock Text="轮次" VerticalAlignment="Center" Margin="4,0"/>
@@ -177,9 +177,10 @@
                                     </WrapPanel>
                                     <TextBlock x:Name="RevisionSelectionText" Text="选择轮次和版本后显示意见" Margin="4,2,0,6" Foreground="{StaticResource MutedBrush}"/>
                                     <DockPanel><TextBlock Text="该版本的返修意见" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/><WrapPanel DockPanel.Dock="Right"><Button x:Name="RevisionAddItemButton" Content="添加意见" IsEnabled="False" Click="AddRevisionItem_Click"/><Button x:Name="RevisionRemoveItemButton" Content="移除选中意见" IsEnabled="False" Click="RemoveRevisionItem_Click"/></WrapPanel></DockPanel>
-                                    <DataGrid x:Name="RevisionItemGrid" IsReadOnly="True" Height="205" SelectionChanged="RevisionItemGrid_SelectionChanged"><DataGrid.Columns><DataGridTextColumn Header="序号" Binding="{Binding Number}" Width="60"/><DataGridTextColumn Header="返修意见" Binding="{Binding Opinion}" Width="*"/><DataGridTextColumn Header="对应回复" Binding="{Binding Reply}" Width="*"/></DataGrid.Columns></DataGrid>
+                                    <DataGrid x:Name="RevisionItemGrid" IsReadOnly="True" Height="205" SelectionChanged="RevisionItemGrid_SelectionChanged"><DataGrid.Columns><DataGridTextColumn Header="序号" Binding="{Binding Number}" Width="60"/><DataGridTextColumn Header="返修意见" Binding="{Binding Opinion}" Width="*"/><DataGridTextColumn Header="对应回复" Binding="{Binding Reply}" Width="*"/><DataGridTextColumn Header="备注" Binding="{Binding Notes}" Width="*"/></DataGrid.Columns></DataGrid>
                                     <TextBlock Text="选中意见内容" Margin="4,8,0,2"/><TextBox x:Name="RevisionOpinionBox" Height="95" IsReadOnly="True" Text="{Binding SelectedItem.Opinion, ElementName=RevisionItemGrid, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
                                     <TextBlock Text="对应回复" Margin="4,8,0,2"/><TextBox x:Name="RevisionReplyBox" Height="95" IsReadOnly="True" Text="{Binding SelectedItem.Reply, ElementName=RevisionItemGrid, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+                                    <TextBlock Text="备注" Margin="4,8,0,2"/><TextBox x:Name="RevisionNotesBox" Height="70" IsReadOnly="True" Text="{Binding SelectedItem.Notes, ElementName=RevisionItemGrid, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
                                     <WrapPanel HorizontalAlignment="Right"><Button x:Name="RevisionSaveRoundButton" Content="保存新轮次" IsEnabled="False" Click="SaveRevisionRound_Click"/><Button x:Name="RevisionSaveVersionButton" Content="保存为新版本" IsEnabled="False" Style="{StaticResource PrimaryButton}" Click="SaveRevisionVersion_Click"/></WrapPanel>
                                     <TextBlock Text="选择历史版本可查看多条意见。编辑最新版本后保存会生成新版本，旧版本保留。" Margin="4,8,0,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
                                 </StackPanel>

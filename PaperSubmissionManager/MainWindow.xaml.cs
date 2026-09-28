@@ -361,8 +361,43 @@ public partial class MainWindow : Window
         RevisionRemoveItemButton.IsEnabled = canEdit && RevisionItemGrid.SelectedItem is RevisionOpinionItemRecord;
         RevisionOpinionBox.IsReadOnly = !canEdit;
         RevisionReplyBox.IsReadOnly = !canEdit;
+        RevisionNotesBox.IsReadOnly = !canEdit;
+        RevisionImportButton.IsEnabled = !_creatingRevisionRound && RevisionVersionBox.SelectedItem is RevisionRecord;
         RevisionSaveRoundButton.IsEnabled = _creatingRevisionRound;
         RevisionSaveVersionButton.IsEnabled = !_creatingRevisionRound && RevisionVersionBox.SelectedItem is RevisionRecord { IsLatest: true };
+    }
+    private void PrepareRevisionPrompt_Click(object sender, RoutedEventArgs e)
+    {
+        var rawText = TextPromptWindow.ShowRaw(this, "提示词预处理", "请粘贴期刊返修邮件或审稿意见原文：", "处理");
+        if (rawText is null) return;
+        try
+        {
+            ProcessedPromptWindow.Show(this, RevisionCommentFormat.BuildPrompt(rawText));
+            SetStatus("返修意见提示词已生成");
+        }
+        catch (Exception ex) { MessageBox.Show(this, ex.Message, "提示", MessageBoxButton.OK, MessageBoxImage.Warning); }
+    }
+    private void ImportRevisionComments_Click(object sender, RoutedEventArgs e)
+    {
+        if (RevisionVersionBox.SelectedItem is not RevisionRecord version) { MessageBox.Show(this, "请先选择返修轮次和版本。", "提示"); return; }
+        var savedItems = _revisions.ListItems(version.Id);
+        if (_revisionDraft.Count != savedItems.Count || _revisionDraft.Where((item, i) =>
+                item.Opinion != savedItems[i].Opinion || item.Reply != savedItems[i].Reply || item.Notes != savedItems[i].Notes).Any())
+        {
+            MessageBox.Show(this, "当前版本有尚未保存的编辑。请先保存为新版本，再导入意见。", "提示");
+            return;
+        }
+        var formattedText = TextPromptWindow.ShowRaw(this, "导入返修意见", "请粘贴 AI 处理后的 <comment>...</comment> 内容：", "导入");
+        if (formattedText is null) return;
+        Run("返修意见已导入", () =>
+        {
+            var comments = RevisionCommentFormat.Parse(formattedText);
+            var existingCount = savedItems.Count;
+            _revisions.AppendComments(version.Id, comments);
+            RefreshRevisions(version.PaperSubmissionId, version.Id);
+            RevisionItemGrid.SelectedIndex = existingCount;
+            MessageBox.Show(this, $"已向第 {version.RoundNumber} 轮 V{version.VersionNumber} 导入 {comments.Count} 条意见。", "导入完成");
+        });
     }
     private void RevisionRoundBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {

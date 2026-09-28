@@ -139,6 +139,7 @@ public sealed class DatabaseService
                 Number INTEGER NOT NULL CHECK(Number > 0),
                 Opinion TEXT NOT NULL,
                 Reply TEXT NOT NULL DEFAULT '',
+                Notes TEXT NOT NULL DEFAULT '',
                 UNIQUE(RevisionId, Number)
             );
             CREATE INDEX IF NOT EXISTS IX_RevisionOpinionItems_Revision ON RevisionOpinionItems(RevisionId, Number);
@@ -178,6 +179,7 @@ public sealed class DatabaseService
         command.ExecuteNonQuery();
         EnsureColumn(connection, "PaperSubmissions", "CurrentStatus", "TEXT NOT NULL DEFAULT '未投稿'");
         EnsureColumn(connection, "PaperAttachments", "IsExternal", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(connection, "RevisionOpinionItems", "Notes", "TEXT NOT NULL DEFAULT ''");
         using (var migrateRevisions = connection.CreateCommand())
         {
             migrateRevisions.CommandText = """

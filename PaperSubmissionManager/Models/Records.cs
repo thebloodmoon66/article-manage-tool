@@ -130,10 +130,12 @@ public sealed class RevisionOpinionItemRecord : INotifyPropertyChanged
 {
     private string _opinion = "";
     private string _reply = "";
+    private string _notes = "";
     public long Id { get; set; }
     public int Number { get; set; }
     public string Opinion { get => _opinion; set { _opinion = value; OnChanged(); } }
     public string Reply { get => _reply; set { _reply = value; OnChanged(); } }
+    public string Notes { get => _notes; set { _notes = value; OnChanged(); } }
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }

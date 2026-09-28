@@ -34,13 +34,13 @@ public sealed class RevisionService(DatabaseService database)
     {
         using var connection = database.OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT Id,Number,Opinion,Reply FROM RevisionOpinionItems WHERE RevisionId=$revision ORDER BY Number;";
+        command.CommandText = "SELECT Id,Number,Opinion,Reply,Notes FROM RevisionOpinionItems WHERE RevisionId=$revision ORDER BY Number;";
         command.Parameters.AddWithValue("$revision", revisionId);
         using var reader = command.ExecuteReader();
         var items = new List<RevisionOpinionItemRecord>();
         while (reader.Read()) items.Add(new RevisionOpinionItemRecord
         {
-            Id = reader.GetInt64(0), Number = reader.GetInt32(1), Opinion = reader.GetString(2), Reply = reader.GetString(3)
+            Id = reader.GetInt64(0), Number = reader.GetInt32(1), Opinion = reader.GetString(2), Reply = reader.GetString(3), Notes = reader.GetString(4)
         });
         return items;
     }
@@ -97,6 +97,37 @@ public sealed class RevisionService(DatabaseService database)
         return id;
     }
 
+    public int AppendComments(long revisionId, IReadOnlyList<string> comments)
+    {
+        if (comments.Count == 0) throw new ArgumentException("没有可导入的返修意见。", nameof(comments));
+        using var connection = database.OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        using var count = connection.CreateCommand();
+        count.Transaction = transaction;
+        count.CommandText = """
+            SELECT COALESCE(MAX(i.Number),0)
+            FROM RevisionOpinions r LEFT JOIN RevisionOpinionItems i ON i.RevisionId=r.Id
+            WHERE r.Id=$revision GROUP BY r.Id;
+            """;
+        count.Parameters.AddWithValue("$revision", revisionId);
+        var nextNumber = count.ExecuteScalar() is { } value
+            ? Convert.ToInt32(value) + 1
+            : throw new InvalidOperationException("选中的返修版本不存在或已被删除。");
+        foreach (var comment in comments)
+        {
+            if (string.IsNullOrWhiteSpace(comment)) throw new ArgumentException("返修意见不能为空。", nameof(comments));
+            using var insert = connection.CreateCommand();
+            insert.Transaction = transaction;
+            insert.CommandText = "INSERT INTO RevisionOpinionItems(RevisionId,Number,Opinion,Reply,Notes) VALUES($revision,$number,$opinion,'','');";
+            insert.Parameters.AddWithValue("$revision", revisionId);
+            insert.Parameters.AddWithValue("$number", nextNumber++);
+            insert.Parameters.AddWithValue("$opinion", comment);
+            insert.ExecuteNonQuery();
+        }
+        transaction.Commit();
+        return comments.Count;
+    }
+
     public void DeleteRound(long submissionId, int roundNumber)
     {
         using var connection = database.OpenConnection();
@@ -107,29 +138,30 @@ public sealed class RevisionService(DatabaseService database)
         if (command.ExecuteNonQuery() == 0) throw new InvalidOperationException("返修意见已不存在。");
     }
 
-    private static List<(string Opinion, string Reply)> ValidateItems(IReadOnlyList<RevisionOpinionItemRecord> items)
+    private static List<(string Opinion, string Reply, string Notes)> ValidateItems(IReadOnlyList<RevisionOpinionItemRecord> items)
     {
         if (items.Count == 0) throw new ArgumentException("请至少添加一条返修意见。", nameof(items));
-        var result = new List<(string Opinion, string Reply)>();
+        var result = new List<(string Opinion, string Reply, string Notes)>();
         foreach (var item in items)
         {
             if (string.IsNullOrWhiteSpace(item.Opinion)) throw new ArgumentException("每条返修意见都不能为空。", nameof(items));
-            result.Add((item.Opinion.Trim(), item.Reply?.Trim() ?? ""));
+            result.Add((item.Opinion.Trim(), item.Reply?.Trim() ?? "", item.Notes?.Trim() ?? ""));
         }
         return result;
     }
 
-    private static void InsertItems(SqliteConnection connection, SqliteTransaction transaction, long revisionId, List<(string Opinion, string Reply)> items)
+    private static void InsertItems(SqliteConnection connection, SqliteTransaction transaction, long revisionId, List<(string Opinion, string Reply, string Notes)> items)
     {
         for (var i = 0; i < items.Count; i++)
         {
             using var insert = connection.CreateCommand();
             insert.Transaction = transaction;
-            insert.CommandText = "INSERT INTO RevisionOpinionItems(RevisionId,Number,Opinion,Reply) VALUES($revision,$number,$opinion,$reply);";
+            insert.CommandText = "INSERT INTO RevisionOpinionItems(RevisionId,Number,Opinion,Reply,Notes) VALUES($revision,$number,$opinion,$reply,$notes);";
             insert.Parameters.AddWithValue("$revision", revisionId);
             insert.Parameters.AddWithValue("$number", i + 1);
             insert.Parameters.AddWithValue("$opinion", items[i].Opinion);
             insert.Parameters.AddWithValue("$reply", items[i].Reply);
+            insert.Parameters.AddWithValue("$notes", items[i].Notes);
             insert.ExecuteNonQuery();
         }
     }

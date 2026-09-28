@@ -7,7 +7,7 @@ public sealed class TextPromptWindow : Window
 {
     private readonly TextBox _box;
 
-    public TextPromptWindow(string title, string label, string initialValue = "", bool multiline = false)
+    public TextPromptWindow(string title, string label, string initialValue = "", bool multiline = false, string confirmText = "确定")
     {
         Title = title;
         Width = 520;
@@ -32,7 +32,7 @@ public sealed class TextPromptWindow : Window
         root.Children.Add(_box);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         var cancel = new Button { Content = "取消", IsCancel = true };
-        var ok = new Button { Content = "确定", IsDefault = true, MinWidth = 88 };
+        var ok = new Button { Content = confirmText, IsDefault = true, MinWidth = 88 };
         ok.Click += (_, _) => { DialogResult = true; Close(); };
         buttons.Children.Add(cancel); buttons.Children.Add(ok);
         Grid.SetRow(buttons, 2);
@@ -42,10 +42,17 @@ public sealed class TextPromptWindow : Window
     }
 
     public string Value => _box.Text.Trim();
+    public string RawValue => _box.Text;
 
     public static string? Show(Window owner, string title, string label, string initialValue = "", bool multiline = false)
     {
         var dialog = new TextPromptWindow(title, label, initialValue, multiline) { Owner = owner };
         return dialog.ShowDialog() == true ? dialog.Value : null;
+    }
+
+    public static string? ShowRaw(Window owner, string title, string label, string confirmText)
+    {
+        var dialog = new TextPromptWindow(title, label, multiline: true, confirmText: confirmText) { Owner = owner };
+        return dialog.ShowDialog() == true ? dialog.RawValue : null;
     }
 }
