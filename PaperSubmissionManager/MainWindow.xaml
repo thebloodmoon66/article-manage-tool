@@ -16,6 +16,23 @@
             <Setter Property="ToolTip" Value="可选中文字并按 Ctrl+C 复制"/>
             <EventSetter Event="GotKeyboardFocus" Handler="CopyableCellTextBox_GotKeyboardFocus"/>
         </Style>
+        <Style x:Key="RevisionResizeGrip" TargetType="{x:Type Thumb}">
+            <Setter Property="Width" Value="18"/>
+            <Setter Property="Height" Value="18"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+            <Setter Property="VerticalAlignment" Value="Bottom"/>
+            <Setter Property="Cursor" Value="SizeNWSE"/>
+            <Setter Property="ToolTip" Value="拖动右下角调整文本框大小"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Thumb}">
+                        <Border Background="#E8EDF4" BorderBrush="#8B98AB" BorderThickness="1" CornerRadius="2">
+                            <TextBlock Text="◢" Foreground="#52647E" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="12"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
     <DockPanel>
         <Border DockPanel.Dock="Top" Background="{StaticResource PrimaryDarkBrush}" Padding="22,14">
@@ -178,9 +195,21 @@
                                     <TextBlock x:Name="RevisionSelectionText" Text="选择轮次和版本后显示意见" Margin="4,2,0,6" Foreground="{StaticResource MutedBrush}"/>
                                     <DockPanel><TextBlock Text="该版本的返修意见" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/><WrapPanel DockPanel.Dock="Right"><Button x:Name="RevisionAddItemButton" Content="添加意见" IsEnabled="False" Click="AddRevisionItem_Click"/><Button x:Name="RevisionRemoveItemButton" Content="移除选中意见" IsEnabled="False" Click="RemoveRevisionItem_Click"/></WrapPanel></DockPanel>
                                     <DataGrid x:Name="RevisionItemGrid" IsReadOnly="True" Height="205" SelectionChanged="RevisionItemGrid_SelectionChanged"><DataGrid.Columns><DataGridTextColumn Header="序号" Binding="{Binding Number}" Width="60"/><DataGridTextColumn Header="返修意见" Binding="{Binding Opinion}" Width="*"/><DataGridTextColumn Header="对应回复" Binding="{Binding Reply}" Width="*"/><DataGridTextColumn Header="备注" Binding="{Binding Notes}" Width="*"/></DataGrid.Columns></DataGrid>
-                                    <TextBlock Text="选中意见内容" Margin="4,8,0,2"/><TextBox x:Name="RevisionOpinionBox" Height="95" IsReadOnly="True" Text="{Binding SelectedItem.Opinion, ElementName=RevisionItemGrid, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
-                                    <TextBlock Text="对应回复" Margin="4,8,0,2"/><TextBox x:Name="RevisionReplyBox" Height="95" IsReadOnly="True" Text="{Binding SelectedItem.Reply, ElementName=RevisionItemGrid, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
-                                    <TextBlock Text="备注" Margin="4,8,0,2"/><TextBox x:Name="RevisionNotesBox" Height="70" IsReadOnly="True" Text="{Binding SelectedItem.Notes, ElementName=RevisionItemGrid, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+                                    <TextBlock Text="选中意见内容" Margin="4,8,0,2"/>
+                                    <Grid Height="95" MinHeight="60" MinWidth="220">
+                                        <TextBox x:Name="RevisionOpinionBox" Padding="4,2,20,18" IsReadOnly="True" Text="{Binding SelectedItem.Opinion, ElementName=RevisionItemGrid, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+                                        <Thumb Style="{StaticResource RevisionResizeGrip}" DragDelta="RevisionTextBoxResize_DragDelta"/>
+                                    </Grid>
+                                    <TextBlock Text="对应回复" Margin="4,8,0,2"/>
+                                    <Grid Height="95" MinHeight="60" MinWidth="220">
+                                        <TextBox x:Name="RevisionReplyBox" Padding="4,2,20,18" IsReadOnly="True" Text="{Binding SelectedItem.Reply, ElementName=RevisionItemGrid, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+                                        <Thumb Style="{StaticResource RevisionResizeGrip}" DragDelta="RevisionTextBoxResize_DragDelta"/>
+                                    </Grid>
+                                    <TextBlock Text="备注" Margin="4,8,0,2"/>
+                                    <Grid Height="70" MinHeight="60" MinWidth="220">
+                                        <TextBox x:Name="RevisionNotesBox" Padding="4,2,20,18" IsReadOnly="True" Text="{Binding SelectedItem.Notes, ElementName=RevisionItemGrid, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+                                        <Thumb Style="{StaticResource RevisionResizeGrip}" DragDelta="RevisionTextBoxResize_DragDelta"/>
+                                    </Grid>
                                     <WrapPanel HorizontalAlignment="Right"><Button x:Name="RevisionSaveRoundButton" Content="保存新轮次" IsEnabled="False" Click="SaveRevisionRound_Click"/><Button x:Name="RevisionSaveVersionButton" Content="保存为新版本" IsEnabled="False" Style="{StaticResource PrimaryButton}" Click="SaveRevisionVersion_Click"/></WrapPanel>
                                     <TextBlock Text="选择历史版本可查看多条意见。编辑最新版本后保存会生成新版本，旧版本保留。" Margin="4,8,0,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
                                 </StackPanel>

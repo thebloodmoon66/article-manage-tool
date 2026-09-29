@@ -5,6 +5,7 @@ using System.IO;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using Microsoft.Win32;
 using PaperSubmissionManager.Dialogs;
@@ -433,6 +434,16 @@ public partial class MainWindow : Window
         UpdateRevisionEditState();
     }
     private void RevisionItemGrid_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateRevisionEditState();
+    private void RevisionTextBoxResize_DragDelta(object sender, DragDeltaEventArgs e)
+    {
+        if (sender is not Thumb { Parent: Grid container }) return;
+        container.Height = Math.Clamp(container.ActualHeight + e.VerticalChange, 60, 700);
+        if (Math.Abs(e.HorizontalChange) < 0.1) return;
+        var availableWidth = (container.Parent as FrameworkElement)?.ActualWidth ?? container.ActualWidth;
+        if (availableWidth <= 0) return;
+        container.Width = Math.Clamp(container.ActualWidth + e.HorizontalChange, Math.Min(220, availableWidth), availableWidth);
+        container.HorizontalAlignment = HorizontalAlignment.Left;
+    }
     private void StartRevisionRound_Click(object sender, RoutedEventArgs e)
     {
         if (SubmissionGrid.SelectedItem is not PaperSubmissionRecord) { MessageBox.Show(this, "请先选择投稿期刊。", "提示"); return; }
