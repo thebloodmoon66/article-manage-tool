@@ -47,7 +47,7 @@ public sealed class RevisionService(DatabaseService database)
 
     public long AddRound(long submissionId, IReadOnlyList<RevisionOpinionItemRecord> items)
     {
-        var validated = ValidateItems(items);
+        var validated = ValidateItems(items, allowEmpty: true);
         using var connection = database.OpenConnection();
         using var transaction = connection.BeginTransaction();
         using var command = connection.CreateCommand();
@@ -60,8 +60,8 @@ public sealed class RevisionService(DatabaseService database)
             FROM PaperSubmissions WHERE Id=$submission RETURNING Id;
             """;
         command.Parameters.AddWithValue("$submission", submissionId);
-        command.Parameters.AddWithValue("$opinion", validated[0].Opinion);
-        command.Parameters.AddWithValue("$reply", validated[0].Reply);
+        command.Parameters.AddWithValue("$opinion", validated.Count > 0 ? validated[0].Opinion : "");
+        command.Parameters.AddWithValue("$reply", validated.Count > 0 ? validated[0].Reply : "");
         command.Parameters.AddWithValue("$time", DatabaseService.Now());
         var id = command.ExecuteScalar() as long? ?? throw new InvalidOperationException("请先选择有效的投稿期刊。");
         InsertItems(connection, transaction, id, validated);
@@ -138,9 +138,9 @@ public sealed class RevisionService(DatabaseService database)
         if (command.ExecuteNonQuery() == 0) throw new InvalidOperationException("返修意见已不存在。");
     }
 
-    private static List<(string Opinion, string Reply, string Notes)> ValidateItems(IReadOnlyList<RevisionOpinionItemRecord> items)
+    private static List<(string Opinion, string Reply, string Notes)> ValidateItems(IReadOnlyList<RevisionOpinionItemRecord> items, bool allowEmpty = false)
     {
-        if (items.Count == 0) throw new ArgumentException("请至少添加一条返修意见。", nameof(items));
+        if (items.Count == 0 && !allowEmpty) throw new ArgumentException("请至少添加一条返修意见。", nameof(items));
         var result = new List<(string Opinion, string Reply, string Notes)>();
         foreach (var item in items)
         {

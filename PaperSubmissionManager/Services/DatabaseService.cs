@@ -185,7 +185,8 @@ public sealed class DatabaseService
             migrateRevisions.CommandText = """
                 INSERT INTO RevisionOpinionItems(RevisionId,Number,Opinion,Reply)
                 SELECT r.Id,1,r.Opinion,r.Reply FROM RevisionOpinions r
-                WHERE NOT EXISTS(SELECT 1 FROM RevisionOpinionItems i WHERE i.RevisionId=r.Id);
+                WHERE trim(r.Opinion)<>''
+                  AND NOT EXISTS(SELECT 1 FROM RevisionOpinionItems i WHERE i.RevisionId=r.Id);
                 """;
             migrateRevisions.ExecuteNonQuery();
         }

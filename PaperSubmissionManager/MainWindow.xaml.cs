@@ -262,7 +262,7 @@ public partial class MainWindow : Window
         foreach (var file in files)
         {
             var name = TextPromptWindow.Show(this, "附件管理名称", $"请输入“{Path.GetFileName(file)}”的管理名称：", Path.GetFileNameWithoutExtension(file));
-            if (!string.IsNullOrWhiteSpace(name)) pending.Add(new PendingAttachment(name, file, linked));
+            if (name is not null) pending.Add(new PendingAttachment(name, file, linked));
         }
         if (pending.Count == 0) return;
         Run("附件记录已添加", () => { _papers.AddAttachments(paper.Id, pending); LoadSelectedPaper(); RefreshPapers(); });
@@ -291,9 +291,38 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(name)) return;
         Run("附件文件名已修改", () => { _papers.RenameAttachmentFile(item.Id, name); LoadSelectedPaper(); });
     }
+    private void RenamePaperAttachmentDisplayName_Click(object sender, RoutedEventArgs e)
+    {
+        if (AttachmentGrid.SelectedItem is not AttachmentRecord item) { MessageBox.Show(this, "请先选择附件。", "提示"); return; }
+        var name = TextPromptWindow.Show(this, "修改管理名称", "请输入附件的管理名称；留空表示不设置管理名称：", item.DisplayName);
+        if (name is null) return;
+        Run("附件管理名称已修改", () =>
+        {
+            _papers.UpdateAttachmentDisplayName(item.Id, name);
+            var attachments = _papers.ListAttachments(item.PaperId);
+            AttachmentGrid.ItemsSource = attachments;
+            AttachmentGrid.SelectedItem = attachments.FirstOrDefault(x => x.Id == item.Id);
+        });
+    }
+    private void RefreshPaperAttachments_Click(object sender, RoutedEventArgs e)
+    {
+        if (PaperGrid.SelectedItem is not PaperRecord paper) { MessageBox.Show(this, "请先选择论文。", "提示"); return; }
+        var submissionId = (SubmissionGrid.SelectedItem as PaperSubmissionRecord)?.Id;
+        var attachmentId = (AttachmentGrid.SelectedItem as AttachmentRecord)?.Id;
+        Run("附件目录已刷新", () =>
+        {
+            var added = _papers.RefreshManagedAttachments(paper.Id);
+            RefreshPapers();
+            if (submissionId is not null)
+                SubmissionGrid.SelectedItem = (SubmissionGrid.ItemsSource as IEnumerable<PaperSubmissionRecord>)?.FirstOrDefault(x => x.Id == submissionId);
+            if (attachmentId is not null)
+                AttachmentGrid.SelectedItem = (AttachmentGrid.ItemsSource as IEnumerable<AttachmentRecord>)?.FirstOrDefault(x => x.Id == attachmentId);
+            MessageBox.Show(this, $"附件目录已检查，新增 {added} 个文件。", "刷新完成");
+        });
+    }
     private void DeletePaperAttachment_Click(object sender, RoutedEventArgs e)
     {
-        if (AttachmentGrid.SelectedItem is not AttachmentRecord item || !Confirm(this, $"确定删除附件“{item.DisplayName}”吗？{(item.IsExternal ? "（仅删除记录，保留源文件）" : "")}")) return;
+        if (AttachmentGrid.SelectedItem is not AttachmentRecord item || !Confirm(this, $"确定删除附件“{item.ManagementDisplayName}”吗？{(item.IsExternal ? "（仅删除记录，保留源文件）" : "")}")) return;
         Run("附件已删除", () => { _papers.DeleteAttachment(item.Id); LoadSelectedPaper(); RefreshPapers(); });
     }
 
@@ -453,10 +482,9 @@ public partial class MainWindow : Window
         RevisionVersionBox.IsEnabled = false;
         _loadingRevisionSelection = false;
         _creatingRevisionRound = true;
-        _revisionDraft = [new RevisionOpinionItemRecord { Number = 1 }];
+        _revisionDraft = [];
         RevisionItemGrid.ItemsSource = _revisionDraft;
-        RevisionItemGrid.SelectedIndex = 0;
-        RevisionSelectionText.Text = "新轮次草稿：请填写意见，必要时添加更多意见，然后保存";
+        RevisionSelectionText.Text = "新轮次草稿：可先保存空轮次，再选择 V1 导入意见；也可手动添加意见后保存";
         UpdateRevisionEditState();
     }
     private void AddRevisionItem_Click(object sender, RoutedEventArgs e)

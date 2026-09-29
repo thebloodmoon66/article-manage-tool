@@ -79,6 +79,7 @@ public sealed class AttachmentRecord
     public string StorageMode => IsExternal ? "仅记录路径" : "已导入文件";
     public string CreatedAt { get; set; } = "";
     public string ActualFileName => Path.GetFileName(StoredPath.Replace('/', Path.DirectorySeparatorChar));
+    public string ManagementDisplayName => string.IsNullOrEmpty(DisplayName) ? "（未命名）" : DisplayName;
 }
 
 public sealed class PaperSubmissionRecord
@@ -194,4 +195,7 @@ public sealed class ImportResult
     public IReadOnlyList<string> Warnings { get; init; } = [];
 }
 
-public sealed record PendingAttachment(string DisplayName, string SourcePath, bool IsExternal = false);
+public sealed record PendingAttachment(string DisplayName, string SourcePath, bool IsExternal = false)
+{
+    public string ManagementDisplayName => string.IsNullOrEmpty(DisplayName) ? $"（未命名）{Path.GetFileName(SourcePath)}" : DisplayName;
+}

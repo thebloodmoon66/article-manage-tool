@@ -237,6 +237,67 @@ public sealed class PaperService(DatabaseService database)
         return rows;
     }
 
+    public int RefreshManagedAttachments(long paperId)
+    {
+        RequireId(paperId, "论文");
+        var paperDirectory = Path.Combine(database.Paths.AttachmentRoot, paperId.ToString(CultureInfo.InvariantCulture));
+        using var connection = database.OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        EnsurePaperExists(connection, transaction, paperId);
+        if (!Directory.Exists(paperDirectory)) return 0;
+
+        var knownPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var query = connection.CreateCommand())
+        {
+            query.Transaction = transaction;
+            query.CommandText = "SELECT StoredPath FROM PaperAttachments WHERE PaperId=$paper AND IsExternal=0;";
+            query.Parameters.AddWithValue("$paper", paperId);
+            using var reader = query.ExecuteReader();
+            while (reader.Read()) knownPaths.Add(reader.GetString(0).Replace('\\', '/'));
+        }
+
+        var added = 0;
+        foreach (var path in Directory.EnumerateFiles(paperDirectory, "*", SearchOption.TopDirectoryOnly))
+        {
+            try
+            {
+                if (!File.Exists(path) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) continue;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { continue; }
+
+            var fileName = Path.GetFileName(path);
+            var relativePath = Path.GetRelativePath(database.Paths.AttachmentRoot, path).Replace('\\', '/');
+            if (!knownPaths.Add(relativePath)) continue;
+            using var insert = connection.CreateCommand();
+            insert.Transaction = transaction;
+            insert.CommandText = """
+                INSERT INTO PaperAttachments(PaperId,DisplayName,OriginalFileName,StoredPath,CreatedAt,IsExternal)
+                VALUES($paper,$display,$original,$stored,$now,0);
+                """;
+            insert.Parameters.AddWithValue("$paper", paperId);
+            insert.Parameters.AddWithValue("$display", Path.GetFileNameWithoutExtension(fileName));
+            insert.Parameters.AddWithValue("$original", fileName);
+            insert.Parameters.AddWithValue("$stored", relativePath);
+            insert.Parameters.AddWithValue("$now", DatabaseService.Now());
+            insert.ExecuteNonQuery();
+            added++;
+        }
+        transaction.Commit();
+        return added;
+    }
+
+    public AttachmentRecord UpdateAttachmentDisplayName(long attachmentId, string? displayName)
+    {
+        RequireId(attachmentId, "附件");
+        using var connection = database.OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE PaperAttachments SET DisplayName=$name WHERE Id=$id;";
+        command.Parameters.AddWithValue("$name", displayName?.Trim() ?? "");
+        command.Parameters.AddWithValue("$id", attachmentId);
+        EnsureOneRow(command.ExecuteNonQuery(), "附件记录不存在或已被删除。");
+        return GetAttachment(attachmentId)!;
+    }
+
     public AttachmentRecord? GetAttachment(long attachmentId)
     {
         RequireId(attachmentId, "附件");
@@ -823,7 +884,7 @@ public sealed class PaperService(DatabaseService database)
         foreach (var item in pending)
         {
             if (item is null) throw new ArgumentException("附件列表中不能包含空记录。", nameof(pendingAttachments));
-            var displayName = RequireText(item.DisplayName, "附件名称");
+            var displayName = item.DisplayName?.Trim() ?? "";
             if (string.IsNullOrWhiteSpace(item.SourcePath))
                 throw new FileNotFoundException("文件不存在");
 

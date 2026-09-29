@@ -268,9 +268,17 @@ public sealed class DataTransferService(DatabaseService database, BackupService 
         }
 
         long? existingId = null; string? oldStoredPath = null;
-        using (var find = Cmd(connection, transaction, "SELECT Id,StoredPath,IsExternal FROM PaperAttachments WHERE PaperId=$paper AND DisplayName=$name COLLATE NOCASE ORDER BY Id LIMIT 1;"))
+        using (var find = Cmd(connection, transaction, """
+            SELECT Id,StoredPath,IsExternal FROM PaperAttachments
+            WHERE PaperId=$paper AND (
+                ($name<>'' AND DisplayName=$name COLLATE NOCASE)
+                OR ($name='' AND DisplayName='' AND OriginalFileName=$original COLLATE NOCASE AND CreatedAt=$created))
+            ORDER BY Id LIMIT 1;
+            """))
         {
-            find.Parameters.AddWithValue("$paper", paperId); find.Parameters.AddWithValue("$name", Required(attachment.DisplayName, "附件名称"));
+            find.Parameters.AddWithValue("$paper", paperId); find.Parameters.AddWithValue("$name", attachment.DisplayName?.Trim() ?? "");
+            find.Parameters.AddWithValue("$original", Path.GetFileName(Required(attachment.OriginalFileName, "附件原文件名")));
+            find.Parameters.AddWithValue("$created", ValidTime(attachment.CreatedAt));
             using var reader = find.ExecuteReader(); if (reader.Read()) { existingId = reader.GetInt64(0); oldStoredPath = reader.GetInt32(2) == 0 ? reader.GetString(1) : null; }
         }
         if (existingId is null)
@@ -291,7 +299,7 @@ public sealed class DataTransferService(DatabaseService database, BackupService 
 
     private static void AddAttachmentParameters(SqliteCommand command, long paperId, TransferAttachment attachment, string relative)
     {
-        command.Parameters.AddWithValue("$paper", paperId); command.Parameters.AddWithValue("$display", Required(attachment.DisplayName, "附件名称")); command.Parameters.AddWithValue("$original", Path.GetFileName(Required(attachment.OriginalFileName, "附件原文件名"))); command.Parameters.AddWithValue("$external", attachment.IsExternal ? 1 : 0); command.Parameters.AddWithValue("$stored", relative); command.Parameters.AddWithValue("$created", ValidTime(attachment.CreatedAt));
+        command.Parameters.AddWithValue("$paper", paperId); command.Parameters.AddWithValue("$display", attachment.DisplayName?.Trim() ?? ""); command.Parameters.AddWithValue("$original", Path.GetFileName(Required(attachment.OriginalFileName, "附件原文件名"))); command.Parameters.AddWithValue("$external", attachment.IsExternal ? 1 : 0); command.Parameters.AddWithValue("$stored", relative); command.Parameters.AddWithValue("$created", ValidTime(attachment.CreatedAt));
     }
 
     private static Dictionary<long, long> ImportWorkspaces(SqliteConnection connection, SqliteTransaction transaction, TransferPackage package)
@@ -370,13 +378,15 @@ public sealed class DataTransferService(DatabaseService database, BackupService 
             }
             foreach (var revision in submission.Revisions)
             {
-                var items = revision.Items.Count > 0 ? revision.Items : [new TransferRevisionItem { Number = 1, Opinion = revision.Opinion, Reply = revision.Reply }];
+                var items = revision.Items.Count > 0 ? revision.Items : package.Version <= 3
+                    ? [new TransferRevisionItem { Number = 1, Opinion = revision.Opinion, Reply = revision.Reply }]
+                    : [];
                 using var insertRevision = Cmd(connection, transaction, "INSERT INTO RevisionOpinions(PaperSubmissionId,RoundNumber,VersionNumber,Opinion,Reply,RecordedAt) VALUES($submission,$round,$version,$opinion,$reply,$time) RETURNING Id;");
                 insertRevision.Parameters.AddWithValue("$submission", id.Value);
                 insertRevision.Parameters.AddWithValue("$round", revision.RoundNumber);
                 insertRevision.Parameters.AddWithValue("$version", revision.VersionNumber);
-                insertRevision.Parameters.AddWithValue("$opinion", Required(items[0].Opinion, "返修意见"));
-                insertRevision.Parameters.AddWithValue("$reply", items[0].Reply ?? "");
+                insertRevision.Parameters.AddWithValue("$opinion", items.Count > 0 ? Required(items[0].Opinion, "返修意见") : "");
+                insertRevision.Parameters.AddWithValue("$reply", items.Count > 0 ? items[0].Reply ?? "" : "");
                 insertRevision.Parameters.AddWithValue("$time", ValidTime(revision.RecordedAt));
                 var revisionId = Convert.ToInt64(insertRevision.ExecuteScalar(), CultureInfo.InvariantCulture);
                 foreach (var item in items)
@@ -434,7 +444,7 @@ public sealed class DataTransferService(DatabaseService database, BackupService 
         if (package.Papers.Count > 100000 || package.Authors.Count > 100000 || package.Workspaces.Count > 100000) throw new InvalidDataException("数据包记录数量异常。");
         foreach (var revision in package.Papers.SelectMany(x => x.Submissions).SelectMany(x => x.Revisions))
         {
-            if (revision.RoundNumber <= 0 || revision.VersionNumber <= 0 || (package.Version >= 4 && revision.Items.Count == 0))
+            if (revision.RoundNumber <= 0 || revision.VersionNumber <= 0 || (package.Version == 4 && revision.Items.Count == 0))
                 throw new InvalidDataException("返修意见版本无效。");
             if (revision.Items.Count > 10000 || revision.Items.Any(x => x.Number <= 0 || string.IsNullOrWhiteSpace(x.Opinion)))
                 throw new InvalidDataException("返修意见条目无效。");

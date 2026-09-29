@@ -9,7 +9,7 @@ public sealed class PaperCreateWindow : Window
 {
     private readonly TextBox _name = new();
     private readonly TextBox _notes = new() { AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, Height = 75 };
-    private readonly ListBox _attachments = new() { DisplayMemberPath = nameof(PendingAttachment.DisplayName), Height = 180 };
+    private readonly ListBox _attachments = new() { DisplayMemberPath = nameof(PendingAttachment.ManagementDisplayName), Height = 180 };
     private readonly List<PendingAttachment> _items = [];
 
     public PaperCreateWindow()
@@ -35,7 +35,7 @@ public sealed class PaperCreateWindow : Window
         foreach (var file in picker.FileNames)
         {
             var display = TextPromptWindow.Show(this, "附件管理名称", $"请输入“{System.IO.Path.GetFileName(file)}”在软件中的管理名称：", System.IO.Path.GetFileNameWithoutExtension(file));
-            if (display is not null && display.Length > 0) _items.Add(new PendingAttachment(display, file, linked.Value));
+            if (display is not null) _items.Add(new PendingAttachment(display, file, linked.Value));
         }
         Refresh();
     }
