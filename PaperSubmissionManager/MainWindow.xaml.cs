@@ -548,8 +548,8 @@ public partial class MainWindow : Window
     private void EditSubmissionNote_Click(object sender, RoutedEventArgs e)
     {
         if (SubmissionNoteGrid.SelectedItem is not SubmissionNoteRecord item) return;
-        var content = TextPromptWindow.Show(this, "编辑投稿纪要", "保存后会生成一个新版本，旧版本继续保留：", item.Content, true); if (string.IsNullOrWhiteSpace(content)) return;
-        Run("投稿纪要新版本已保存", () => { _papers.EditSubmissionNote(item.Id, content); if (SubmissionGrid.SelectedItem is PaperSubmissionRecord submission) SubmissionNoteGrid.ItemsSource = _papers.ListSubmissionNotes(submission.Id); });
+        var content = TextPromptWindow.Show(this, "编辑投稿纪要", "保存后将覆盖当前选中的纪要：", item.Content, true); if (string.IsNullOrWhiteSpace(content)) return;
+        Run("投稿纪要已保存", () => { _papers.EditSubmissionNote(item.Id, content); if (SubmissionGrid.SelectedItem is PaperSubmissionRecord submission) { var notes = _papers.ListSubmissionNotes(submission.Id); SubmissionNoteGrid.ItemsSource = notes; SubmissionNoteGrid.SelectedItem = notes.FirstOrDefault(note => note.Id == item.Id); } });
     }
     private void DeleteSubmissionNote_Click(object sender, RoutedEventArgs e)
     {

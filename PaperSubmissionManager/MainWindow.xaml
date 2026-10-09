@@ -191,7 +191,7 @@
                                         </StackPanel>
                                     </Border>
                                     <DockPanel><TextBlock Text="状态纪要（新到旧）" FontSize="17" FontWeight="Bold" VerticalAlignment="Center"/><WrapPanel DockPanel.Dock="Right"><Button Content="新增状态" Style="{StaticResource PrimaryButton}" Click="AddSubmissionNote_Click"/><Button Content="编辑纪要" Click="EditSubmissionNote_Click"/><Button Content="删除纪要" Style="{StaticResource DangerButton}" Click="DeleteSubmissionNote_Click"/></WrapPanel></DockPanel>
-                                    <DataGrid x:Name="SubmissionNoteGrid" IsReadOnly="True" Height="240"><DataGrid.Columns><DataGridTextColumn Header="纪要内容" Binding="{Binding Content}" Width="*"/><DataGridTextColumn Header="填写时间" Binding="{Binding RecordedAt}" Width="190"/></DataGrid.Columns></DataGrid>
+                                    <DataGrid x:Name="SubmissionNoteGrid" IsReadOnly="True" Height="240" ScrollViewer.CanContentScroll="False"><DataGrid.Columns><DataGridTemplateColumn Header="纪要内容" Width="*"><DataGridTemplateColumn.CellTemplate><DataTemplate><TextBlock Text="{Binding Content}" TextWrapping="Wrap" Margin="4,3"/></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn><DataGridTextColumn Header="填写时间" Binding="{Binding RecordedAt}" Width="190"/></DataGrid.Columns></DataGrid>
                                 </StackPanel>
                             </Border>
                             <Border Style="{StaticResource CardBorder}">

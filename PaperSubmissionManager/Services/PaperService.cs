@@ -632,78 +632,19 @@ public sealed class PaperService(DatabaseService database)
     }
 
     /// <summary>
-    /// 编辑纪要不会覆盖旧内容，而是在同一个 VersionGroupId 下追加一个新版本。
-    /// 传入该组任意一个版本的 Id 均可定位到当前版本。
+    /// 覆盖选中的纪要内容，保留原有记录编号和填写时间。
     /// </summary>
     public long EditSubmissionNote(long noteId, string content)
     {
         RequireId(noteId, "投稿状态纪要");
         var normalizedContent = RequireText(content, "投稿状态纪要");
         using var connection = database.OpenConnection();
-        using var transaction = connection.BeginTransaction();
-
-        long submissionId;
-        string versionGroupId;
-        using (var lookup = connection.CreateCommand())
-        {
-            lookup.Transaction = transaction;
-            lookup.CommandText = """
-                SELECT PaperSubmissionId, VersionGroupId
-                FROM SubmissionNotes WHERE Id = $id;
-                """;
-            lookup.Parameters.AddWithValue("$id", noteId);
-            using var reader = lookup.ExecuteReader();
-            if (!reader.Read()) throw new InvalidOperationException("投稿状态纪要不存在或已被删除。");
-            submissionId = reader.GetInt64(0);
-            versionGroupId = reader.GetString(1);
-        }
-
-        int nextVersion;
-        using (var versionCommand = connection.CreateCommand())
-        {
-            versionCommand.Transaction = transaction;
-            versionCommand.CommandText = """
-                SELECT COALESCE(MAX(VersionNumber), 0),
-                       COALESCE(SUM(CASE WHEN IsCurrent = 1 THEN 1 ELSE 0 END), 0)
-                FROM SubmissionNotes
-                WHERE VersionGroupId = $group;
-                """;
-            versionCommand.Parameters.AddWithValue("$group", versionGroupId);
-            using var reader = versionCommand.ExecuteReader();
-            reader.Read();
-            nextVersion = reader.GetInt32(0) + 1;
-            if (reader.GetInt32(1) == 0)
-                throw new InvalidOperationException("已归档的投稿状态纪要不能直接编辑。");
-        }
-
-        using (var retire = connection.CreateCommand())
-        {
-            retire.Transaction = transaction;
-            retire.CommandText = "UPDATE SubmissionNotes SET IsCurrent = 0 WHERE VersionGroupId = $group;";
-            retire.Parameters.AddWithValue("$group", versionGroupId);
-            retire.ExecuteNonQuery();
-        }
-
-        long newNoteId;
-        using (var insert = connection.CreateCommand())
-        {
-            insert.Transaction = transaction;
-            insert.CommandText = """
-                INSERT INTO SubmissionNotes(
-                    PaperSubmissionId, VersionGroupId, VersionNumber, Content, RecordedAt, IsCurrent)
-                VALUES($submission, $group, $version, $content, $now, 1)
-                RETURNING Id;
-                """;
-            insert.Parameters.AddWithValue("$submission", submissionId);
-            insert.Parameters.AddWithValue("$group", versionGroupId);
-            insert.Parameters.AddWithValue("$version", nextVersion);
-            insert.Parameters.AddWithValue("$content", normalizedContent);
-            insert.Parameters.AddWithValue("$now", DatabaseService.Now());
-            newNoteId = Convert.ToInt64(insert.ExecuteScalar(), CultureInfo.InvariantCulture);
-        }
-
-        transaction.Commit();
-        return newNoteId;
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE SubmissionNotes SET Content = $content WHERE Id = $id;";
+        command.Parameters.AddWithValue("$content", normalizedContent);
+        command.Parameters.AddWithValue("$id", noteId);
+        EnsureOneRow(command.ExecuteNonQuery(), "投稿状态纪要不存在或已被删除。");
+        return noteId;
     }
 
     /// <summary>

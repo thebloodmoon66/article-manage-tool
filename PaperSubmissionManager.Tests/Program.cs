@@ -84,7 +84,7 @@ Assert(autoSubmission.JournalWorkspaceId == workspaceId && autoSubmission.Curren
 var submissionId = papers.AddSubmission(paperId, journal.Name, workspaceId); Assert(submissionId == autoSubmission.Id, "已有未投稿同步记录时不应重复创建。"); var note1 = papers.AddSubmissionNote(submissionId, "投稿中", "已投稿"); papers.EditSubmissionNote(note1, "编辑部处理中");
 papers.UpdateSubmissionStatus(submissionId, "已投稿");
 Assert(papers.ListSubmissions(paperId).Single().CurrentStatus == "已投稿", "投稿状态下拉菜单应能直接把当前状态改为已投稿。");
-var versions = papers.ListSubmissionNotes(submissionId); Assert(versions.Count == 2 && versions.Count(x => x.IsCurrent) == 1 && versions.Max(x => x.VersionNumber) == 2, "纪要历史版本追加失败。");
+var notes = papers.ListSubmissionNotes(submissionId); Assert(notes.Count == 1 && notes[0].Id == note1 && notes[0].Content == "编辑部处理中" && notes[0].VersionNumber == 1 && notes[0].IsCurrent, "编辑纪要应覆盖原记录。");
 papers.AddSubmissionNote(submissionId, "返修中", "编辑要求返修");
 Assert(papers.ListSubmissionNotes(submissionId).First().Content == "编辑要求返修", "新增状态纪要应排列在列表第一行。");
 Assert(papers.ListSubmissions(paperId).Single().CurrentStatus == "返修中", "新增纪要必须更新该投稿记录唯一的当前状态。");
@@ -170,7 +170,7 @@ try { papers.ResolveAttachmentPath(new AttachmentRecord { IsExternal = true, Sto
 catch (FileNotFoundException ex) { blankRejected = ex.Message == "文件不存在"; }
 Assert(blankRejected, "空路径应提示文件不存在。");
 
-Console.WriteLine($"PASS journals={import.ReadCount}; classifications=417; backups={backup.List().Count}; noteVersions={versions.Count}; externalAttachments=PASS");
+Console.WriteLine($"PASS journals={import.ReadCount}; classifications=417; backups={backup.List().Count}; noteCount={notes.Count}; externalAttachments=PASS");
 
 static long Scalar(SqliteConnection connection, string sql) { using var command = connection.CreateCommand(); command.CommandText = sql; return Convert.ToInt64(command.ExecuteScalar()); }
 static void Assert(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
