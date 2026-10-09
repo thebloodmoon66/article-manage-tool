@@ -9,7 +9,7 @@
     <AssemblyName>论文投稿管理助手</AssemblyName>
     <RootNamespace>PaperSubmissionManager</RootNamespace>
     <ApplicationIcon />
-    <Version>0.1.4.5</Version>
+    <Version>0.1.4.6</Version>
   </PropertyGroup>
 
   <ItemGroup>

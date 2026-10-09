@@ -311,13 +311,13 @@ public partial class MainWindow : Window
         var attachmentId = (AttachmentGrid.SelectedItem as AttachmentRecord)?.Id;
         Run("附件目录已刷新", () =>
         {
-            var added = _papers.RefreshManagedAttachments(paper.Id);
+            var (added, removed) = _papers.RefreshManagedAttachments(paper.Id);
             RefreshPapers();
             if (submissionId is not null)
                 SubmissionGrid.SelectedItem = (SubmissionGrid.ItemsSource as IEnumerable<PaperSubmissionRecord>)?.FirstOrDefault(x => x.Id == submissionId);
             if (attachmentId is not null)
                 AttachmentGrid.SelectedItem = (AttachmentGrid.ItemsSource as IEnumerable<AttachmentRecord>)?.FirstOrDefault(x => x.Id == attachmentId);
-            MessageBox.Show(this, $"附件目录已检查，新增 {added} 个文件。", "刷新完成");
+            MessageBox.Show(this, $"附件目录已核对，新增 {added} 个文件，移除 {removed} 条失效记录。", "刷新完成");
         });
     }
     private void DeletePaperAttachment_Click(object sender, RoutedEventArgs e)

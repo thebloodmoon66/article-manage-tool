@@ -237,37 +237,79 @@ public sealed class PaperService(DatabaseService database)
         return rows;
     }
 
-    public int RefreshManagedAttachments(long paperId)
+    public (int Added, int Removed) RefreshManagedAttachments(long paperId)
     {
         RequireId(paperId, "论文");
-        var paperDirectory = Path.Combine(database.Paths.AttachmentRoot, paperId.ToString(CultureInfo.InvariantCulture));
+        var attachmentRoot = database.Paths.AttachmentRoot;
+        var paperDirectory = Path.Combine(attachmentRoot, paperId.ToString(CultureInfo.InvariantCulture));
+        var rootAttributes = File.GetAttributes(attachmentRoot);
+        if ((rootAttributes & FileAttributes.Directory) == 0 || (rootAttributes & FileAttributes.ReparsePoint) != 0)
+            throw new SecurityException("受控附件目录无效或是目录联接。");
+
+        var files = new Dictionary<string, (string RelativePath, string FileName)>(StringComparer.OrdinalIgnoreCase);
+        var directoryExists = true;
+        try
+        {
+            var attributes = File.GetAttributes(paperDirectory);
+            if ((attributes & FileAttributes.Directory) == 0 || (attributes & FileAttributes.ReparsePoint) != 0)
+                throw new SecurityException("论文附件目录无效或是目录联接。");
+        }
+        catch (FileNotFoundException) { directoryExists = false; }
+        catch (DirectoryNotFoundException) { directoryExists = false; }
+
+        if (directoryExists)
+        {
+            foreach (var path in Directory.EnumerateFiles(paperDirectory, "*", SearchOption.TopDirectoryOnly))
+            {
+                if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) continue;
+                var relativePath = Path.GetRelativePath(attachmentRoot, path).Replace('\\', '/');
+                files.TryAdd(relativePath, (relativePath, Path.GetFileName(path)));
+            }
+        }
+
         using var connection = database.OpenConnection();
         using var transaction = connection.BeginTransaction();
         EnsurePaperExists(connection, transaction, paperId);
-        if (!Directory.Exists(paperDirectory)) return 0;
-
-        var knownPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var known = new List<(long Id, string StoredPath, string OriginalFileName)>();
         using (var query = connection.CreateCommand())
         {
             query.Transaction = transaction;
-            query.CommandText = "SELECT StoredPath FROM PaperAttachments WHERE PaperId=$paper AND IsExternal=0;";
+            query.CommandText = "SELECT Id, StoredPath, OriginalFileName FROM PaperAttachments WHERE PaperId=$paper AND IsExternal=0;";
             query.Parameters.AddWithValue("$paper", paperId);
             using var reader = query.ExecuteReader();
-            while (reader.Read()) knownPaths.Add(reader.GetString(0).Replace('\\', '/'));
+            while (reader.Read()) known.Add((reader.GetInt64(0), reader.GetString(1), reader.GetString(2)));
+        }
+
+        var removed = 0;
+        foreach (var attachment in known)
+        {
+            var storedPath = attachment.StoredPath.Replace('\\', '/');
+            if (files.TryGetValue(storedPath, out var file))
+            {
+                files.Remove(storedPath);
+                if (string.Equals(attachment.StoredPath, file.RelativePath, StringComparison.Ordinal) &&
+                    string.Equals(attachment.OriginalFileName, file.FileName, StringComparison.Ordinal)) continue;
+                using var update = connection.CreateCommand();
+                update.Transaction = transaction;
+                update.CommandText = "UPDATE PaperAttachments SET StoredPath=$stored, OriginalFileName=$original WHERE Id=$id;";
+                update.Parameters.AddWithValue("$stored", file.RelativePath);
+                update.Parameters.AddWithValue("$original", file.FileName);
+                update.Parameters.AddWithValue("$id", attachment.Id);
+                EnsureOneRow(update.ExecuteNonQuery(), "附件记录不存在或已被删除。");
+                continue;
+            }
+
+            using var delete = connection.CreateCommand();
+            delete.Transaction = transaction;
+            delete.CommandText = "DELETE FROM PaperAttachments WHERE Id=$id;";
+            delete.Parameters.AddWithValue("$id", attachment.Id);
+            EnsureOneRow(delete.ExecuteNonQuery(), "附件记录不存在或已被删除。");
+            removed++;
         }
 
         var added = 0;
-        foreach (var path in Directory.EnumerateFiles(paperDirectory, "*", SearchOption.TopDirectoryOnly))
+        foreach (var file in files.Values)
         {
-            try
-            {
-                if (!File.Exists(path) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) continue;
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { continue; }
-
-            var fileName = Path.GetFileName(path);
-            var relativePath = Path.GetRelativePath(database.Paths.AttachmentRoot, path).Replace('\\', '/');
-            if (!knownPaths.Add(relativePath)) continue;
             using var insert = connection.CreateCommand();
             insert.Transaction = transaction;
             insert.CommandText = """
@@ -275,15 +317,15 @@ public sealed class PaperService(DatabaseService database)
                 VALUES($paper,$display,$original,$stored,$now,0);
                 """;
             insert.Parameters.AddWithValue("$paper", paperId);
-            insert.Parameters.AddWithValue("$display", Path.GetFileNameWithoutExtension(fileName));
-            insert.Parameters.AddWithValue("$original", fileName);
-            insert.Parameters.AddWithValue("$stored", relativePath);
+            insert.Parameters.AddWithValue("$display", Path.GetFileNameWithoutExtension(file.FileName));
+            insert.Parameters.AddWithValue("$original", file.FileName);
+            insert.Parameters.AddWithValue("$stored", file.RelativePath);
             insert.Parameters.AddWithValue("$now", DatabaseService.Now());
             insert.ExecuteNonQuery();
             added++;
         }
         transaction.Commit();
-        return added;
+        return (added, removed);
     }
 
     public AttachmentRecord UpdateAttachmentDisplayName(long attachmentId, string? displayName)
